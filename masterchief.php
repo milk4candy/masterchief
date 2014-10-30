@@ -82,6 +82,10 @@ class masterchief {
         }
     }
 
+    /*
+     * This method will disable all standard output and set signal handlers.
+     * Return: void
+     */
     public function set_daemond_env(){
         // Because a daemond has no controlling terminal, it will raise some problems if daemond try to ouput something.
         // Hence, we disable all output
@@ -100,6 +104,10 @@ class masterchief {
         pcntl_signal(SIGUSR1, array('masterchief','signal_handler'));
     }
 
+    /*
+     * This method definds the behavior of signal handler.
+     * Return: void
+     */
     public function signal_handler($signo){
         switch($signo){
             case SIGUSR1:
@@ -138,7 +146,7 @@ class masterchief {
         }elseif($child_pid){
             // Only father process will receive the PID of child process. 
             // So this part defines what should father process(very beginning process) do after fork.
-            // What father process should do here is waiting child to end.
+            // What father process should do here is waiting child to end then kill itself.
             pcntl_wait($children_status); 
             $this->libs['mc_log_mgr']->write_log('Father out!');
             exit();
@@ -160,9 +168,32 @@ class masterchief {
                 $this->libs['mc_log_mgr']->write_log('Child out!');
                 exit(); 
             }else{
+                // Disable output and set signal handler
                 $this->set_daemond_env();
+
+                // Build a socket
+                $this->libs['mc_socket_mgr']->build_listening_socket();
+
                 while(true){
-                    $this->libs['mc_log_mgr']->write_log('');
+                    // Check if there is any active incoming sockets
+                    if($this->libs['mc_socket_mgr']->get_incoming_socket_num()){
+                        if($this->libs['mc_socket_mgr']->is_listening_socket_exist()){
+                            if($client = socket_accept($this->libs['mc_socket_mgr']->listening_socket)){
+                                /*
+                                if(count($this->libs['mc_socket_mgr']->client_sockets) >= $this->config['socket']['maxconn']){
+                                    // Too many socket connections, reject new socket!
+                                    $reject_msg = 'Server is busy, please try later.';
+                                    socket_write($client, $reject_msg, strlen($reject_msg));
+                                    socket_close($client);
+                                }else{
+                                    array_push($client, $this->libs['mc_socket_mgr']->client_sockets);
+                                }
+                                */
+                            }
+                        }
+                    }
+
+                    sleep(3);
                 }
             }
 
