@@ -151,7 +151,7 @@ class masterchief {
             // So this part defines what should father process(very beginning process) do after fork.
             // What father process should do here is waiting child to end then kill itself.
             pcntl_wait($children_status); 
-            $this->libs['mc_log_mgr']->write_log('Father out!');
+            //$this->libs['mc_log_mgr']->write_log('Father out!');
             exit();
 
         }else{
@@ -168,58 +168,64 @@ class masterchief {
                 exit(1); 
             }elseif($grand_child_pid){
                 // Child process part, just exit to make grand child process be adopted by init.
-                $this->libs['mc_log_mgr']->write_log('Child out!');
+                //$this->libs['mc_log_mgr']->write_log('Child out!');
                 exit(); 
             }else{
                 // Disable output and set signal handler
                 $this->set_daemond_env();
 
                 // Build a service socket
-                $this->libs['mc_socket_mgr']->build_service_sockets();
+                $this->libs['mc_socket_mgr']->build_service_socket();
+
+                $this->libs['mc_log_mgr']->write_log("Daemond start.");
 
                 while(true){
-                    // Check if there is any active service request
+                    // Check if there is any active request
                     if($this->libs['mc_socket_mgr']->is_request_in()){
-                        if($client_socket = socket_accept($this->libs['mc_socket_mgr']->service_sockets[0])){
-                            // Check if current client connection number exceed the maximun limit or not
-                            if(count($this->libs['mc_socket_mgr']->client_sockets) < $this->config['socket']['maxconn']){
-                                // If not, store the client socket then go back to listen
-                                $this->libs['mc_socket_mgr']->add_client_socket($client_socket);
-                                //continue;
-                            }else{
-                                // Too many socket connections, reject new socket!
-                                $reject_msg = 'Server is busy, please try later.';
-                                $this->libs['mc_socket_mgr']->reply_client($client_socket, $reject_msg);
-                                socket_close($client_socket);
+                        $this->libs['mc_log_mgr']->write_log("Incoming request.");
+                        if($this->libs['mc_socket_mgr']->is_request_from_service()){
+                            $this->libs['mc_log_mgr']->write_log("Request comes from service socket!");
+                            if($client_socket = socket_accept($this->libs['mc_socket_mgr']->service_socket)){
+                                // Check if current client connection number exceed the maximun limit or not
+                                if(count($this->libs['mc_socket_mgr']->client_sockets) < $this->config['socket']['maxconn']){
+                                    // If not, store the client socket then go back to listen
+                                    $this->libs['mc_socket_mgr']->add_client_socket($client_socket);
+                                    //continue;
+                                }else{
+                                    // Too many socket connections, reject new socket!
+                                    $reject_msg = 'Server is busy, please try later.';
+                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, $reject_msg);
+                                    socket_close($client_socket);
+                                }
                             }
                         }
-                    }
 
-
-                    if($this->libs['mc_socket_mgr']->is_active_client()){
                         // Process client request.
                         foreach($this->libs['mc_socket_mgr']->client_sockets as $client_socket_key => $client_socket){
-                            if($input = socket_read($client_socket, 2048)){
-                                // If client sending data, fork a child process(a worker process) to deal it.
-                                $worker_pid = pcntl_fork();
-                                if($worker_pid === -1){
-                                }elseif(!$worker_pid){
-                                    // Worker part
-                                    $worker_thread_title = 'mc_worker_'.basename($input);
-                                    setthreadtitle($worker_thread_title);
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
-                                    $sleep = rand(3, 8);
-                                    sleep($sleep);
+                            if($this->libs['mc_socket_mgr']->is_request_from_client($client_socket)){
+                                $this->libs['mc_log_mgr']->write_log("Request comes form client socket!");
+                                if($input = socket_read($client_socket, 2048)){
+                                    // If client sending data, fork a child process(a worker process) to deal it.
+                                    $worker_pid = pcntl_fork();
+                                    if($worker_pid === -1){
+                                    }elseif(!$worker_pid){
+                                        // Worker part
+                                        $worker_thread_title = 'mc_worker_'.basename($input);
+                                        //setthreadtitle($worker_thread_title);
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
+                                        $sleep = rand(3, 8);
+                                        sleep($sleep);
 
-                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job is done!');
+                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job is done!');
 
-                                    // Job done, close socket between worker and client.
-                                    $this->libs['mc_socket_mgr']->close_client_socket($client_socket_key);
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is closed.");
-                                    exit();
-                                }else{
-                                    // Service daemond part
-                                    $this->workers[$worker_pid] = $client_socket_key;
+                                        // Job done, close socket between worker and client.
+                                        $this->libs['mc_socket_mgr']->close_client_socket($client_socket_key);
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is closed.");
+                                        exit();
+                                    }else{
+                                        // Service daemond part
+                                        $this->workers[$worker_pid] = $client_socket_key;
+                                    }
                                 }
                             }
                         }
@@ -241,7 +247,7 @@ class masterchief {
                         $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
                         usleep(100000);
                     }
-                    sleep(1);
+                    usleep(200000);
                 }
             }
         }
