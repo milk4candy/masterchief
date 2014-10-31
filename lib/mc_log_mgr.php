@@ -1,7 +1,5 @@
 <?php
 
-require('mc_basic_tool.php');
-
 class mc_log_mgr extends mc_basic_tool{
 
     public function __construct($config = array()){
