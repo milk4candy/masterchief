@@ -20,7 +20,9 @@ class masterchief {
     public $args;
     public $config;
     public $libs;
-    public $workers;
+    public $workers = array();
+    public $proc_type = 'Daemond';
+    public $pid;
 
 
 
@@ -37,7 +39,12 @@ class masterchief {
         $this->args = $this->prepare_args($cmd_arg);
         $this->config = $this->prepare_config();
         $this->init_libs();
+        $this->pid = getmypid();
     } 
+
+
+    public function __destruct(){
+    }
 
     /*
      * This method will organize the incoming arguments to a array and return it.
@@ -104,6 +111,7 @@ class masterchief {
         pcntl_signal(SIGTERM, array('masterchief','signal_handler'));
         pcntl_signal(SIGHUP, array('masterchief','signal_handler'));
         pcntl_signal(SIGINT, array('masterchief','signal_handler'));
+        pcntl_signal(SIGCHLD, array('masterchief','signal_handler'));
         pcntl_signal(SIGUSR1, array('masterchief','signal_handler'));
     }
 
@@ -115,8 +123,57 @@ class masterchief {
         switch($signo){
             case SIGUSR1:
                 break;
+            case SIGCHLD:
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                if($finished_worker_pid > 0){
+                    $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) is sending exit signal. Reaping it...");
+                    // After a worker is finished, close socket between service daemond and client.
+                    $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
+
+                    // Remove finished worker from exist worker record.
+                    unset($this->workers[$finished_worker_pid]);
+
+                    // Write log
+                    $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
+                }
+                break;
             default:
-                $this->libs['mc_log_mgr']->write_log('Daemond stop!');
+                // Kill all workers
+                if(count($this->workers) > 0){
+                    $this->libs['mc_log_mgr']->write_log('Killing all exist workers...');
+                    foreach($this->workers as $worker){
+                        posix_kill($worker, $signo);
+                    }
+                }
+
+                // Wait for all workers exit
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                $reaping_time = time();
+                while(count($this->workers) > 0){
+                    if($finished_worker_pid > 0){
+                        $this->libs['mc_log_mgr']->write_log("Reaping worker(PID=$finished_worker_pid)...");
+                        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
+
+                        // Remove finished worker from exist worker record.
+                        unset($this->workers[$finished_worker_pid]);
+
+                        // Write log
+                        $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) was reaped.");
+                        usleep(10000);
+                    }
+
+                    if(count($this->workers) == 0){
+                        $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
+                    }
+
+                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+
+                    if(time() - $reaping_time > 10){
+                        break;
+                    }
+                }
+
+                $this->libs['mc_log_mgr']->write_log($this->proc_type.'('.$this->pid.') stop!');
                 exit();
         }
     }
@@ -182,9 +239,7 @@ class masterchief {
                 while(true){
                     // Check if there is any active request
                     if($this->libs['mc_socket_mgr']->is_request_in()){
-                        $this->libs['mc_log_mgr']->write_log("Incoming request.");
                         if($this->libs['mc_socket_mgr']->is_request_from_service()){
-                            $this->libs['mc_log_mgr']->write_log("Request comes from service socket!");
                             if($client_socket = socket_accept($this->libs['mc_socket_mgr']->service_socket)){
                                 // Check if current client connection number exceed the maximun limit or not
                                 if(count($this->libs['mc_socket_mgr']->client_sockets) < $this->config['socket']['maxconn']){
@@ -203,27 +258,34 @@ class masterchief {
                         // Process client request.
                         foreach($this->libs['mc_socket_mgr']->client_sockets as $client_socket_key => $client_socket){
                             if($this->libs['mc_socket_mgr']->is_request_from_client($client_socket)){
-                                $this->libs['mc_log_mgr']->write_log("Request comes form client socket!");
                                 if($input = socket_read($client_socket, 2048)){
                                     // If client sending data, fork a child process(a worker process) to deal it.
                                     $worker_pid = pcntl_fork();
                                     if($worker_pid === -1){
                                     }elseif(!$worker_pid){
                                         // Worker part
+                                        $this->proc_type = 'Worker';
+                                        $this->pid = getmypid();
+
+                                        // A worker should not have any child worker and only should have one client socket.
+                                        $this->workers = array();
+                                        $this->libs['mc_socket_mgr']->client_sockets = array($client_socket);
+
                                         $worker_thread_title = 'mc_worker_'.basename($input);
-                                        //setthreadtitle($worker_thread_title);
+                                        setthreadtitle($worker_thread_title);
                                         $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                         $sleep = rand(3, 8);
                                         sleep($sleep);
 
-                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job is done!');
+                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job('.$this->pid.') is done!');
 
                                         // Job done, close socket between worker and client.
-                                        $this->libs['mc_socket_mgr']->close_client_socket($client_socket_key);
-                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is closed.");
+                                        //$this->libs['mc_socket_mgr']->close_client_socket($client_socket_key);
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                         exit();
                                     }else{
                                         // Service daemond part
+                                        $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($input));
                                         $this->workers[$worker_pid] = $client_socket_key;
                                     }
                                 }
@@ -235,6 +297,7 @@ class masterchief {
                     // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
                     $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
                     while($finished_worker_pid > 0){
+                        $this->libs['mc_log_mgr']->write_log("Found a finished worker(PID=$finished_worker_pid). Reaping it...");
                         // After a worker is finished, close socket between service daemond and client.
                         $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
@@ -242,7 +305,7 @@ class masterchief {
                         unset($this->workers[$finished_worker_pid]);
 
                         // Write log
-                        $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) is closed.");
+                        $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
 
                         $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
                         usleep(100000);

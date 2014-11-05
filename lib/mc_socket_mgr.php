@@ -4,10 +4,15 @@ class mc_socket_mgr extends mc_basic_tool{
 
     public $service_socket = null;
     public $client_sockets = array();
-    public $detected_sockets = array();
+    public $detected_sockets = null;
 
     public function __construct($config = array()){
         parent::__construct($config);
+    }
+
+    public function __destruct(){
+       $this->close_service_socket(); 
+       $this->close_client_sockets(); 
     }
 
     public function build_service_socket(){
@@ -17,6 +22,18 @@ class mc_socket_mgr extends mc_basic_tool{
         socket_listen($socket);
         socket_set_nonblock($socket);
         $this->service_socket = $socket;
+    }
+
+    public function close_service_socket(){
+        if($this->service_socket != null){
+            socket_close($this->service_socket);
+        }
+    }
+
+    public function close_client_sockets(){
+        foreach($this->client_sockets as $client_socket){
+            socket_close($client_socket);
+        }
     }
 
     public function is_request_in(){
@@ -50,7 +67,6 @@ class mc_socket_mgr extends mc_basic_tool{
     }
 
     public function close_client_socket($client_socket_key){
-        socket_shutdown($this->client_sockets[$client_socket_key]);
         socket_close($this->client_sockets[$client_socket_key]);
         unset($this->client_sockets[$client_socket_key]);
     }
