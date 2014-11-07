@@ -4,19 +4,11 @@
 
 require('daemond.php');
 
-class masterchief extends daemond{
+class cortana extends daemond{
 
     /***********************
      * Define data members *
      ***********************/
-
-    public $script_path;
-    public $args;
-    public $config;
-    public $libs;
-    public $workers = array();
-    public $proc_type = 'Daemond';
-    public $pid;
 
 
 
@@ -28,8 +20,8 @@ class masterchief extends daemond{
      * This method is constructor whic will execute when generate instance of this class.
      * Return: void
      */
-    public function __construct($cmd_args){
-        parent::__construct($cmd_args, array('config_name' => 'main'));
+    public function __construct($cmd_args, $default_args = array('config_name' => 'masterchief')){
+        parent::__construct($cmd_args, $default_args);
     } 
 
 
@@ -111,8 +103,8 @@ class masterchief extends daemond{
      *      Because grand child will not be a process group and session leader, it can not obtain a controlling terminal.
      *      Finally, we make child process exit making grand child process a orphan process which will be adopted by init process.
      *      And here is a basic daemond structure.
-     * It will listen a certain TCP socket for incoming job request.
-     * Onec it receive a job request, it will either runs the job or put job into a queue depends on type of request and reply the request client.
+     * It will listen a queue for incoming job request.
+     * Onec it receive a job request, it will fork a child worker process to execute the job.
      * It will also write logs to local files and database.
      * Return: void
      */
@@ -150,70 +142,43 @@ class masterchief extends daemond{
                 //$this->libs['mc_log_mgr']->write_log('Child out!');
                 exit(); 
             }else{
-                declare(ticks=1);
+                // Daemond part
 
                 // Disable output and set signal handler
                 $this->set_daemond_env();
 
-                // Build a service socket
-                $this->libs['mc_socket_mgr']->build_service_socket();
-
-                $this->libs['mc_log_mgr']->write_log("Daemond start.");
+                // Build a message queue
+                $this->lib['mc_queue_mgr']->build_a_queue();
 
                 while(true){
-                    // Check if there is any active request
-                    if($this->libs['mc_socket_mgr']->is_request_in()){
-                        if($this->libs['mc_socket_mgr']->is_request_from_service()){
-                            if($client_socket = socket_accept($this->libs['mc_socket_mgr']->service_socket)){
-                                // Check if current client connection number exceed the maximun limit or not
-                                if(count($this->libs['mc_socket_mgr']->client_sockets) < $this->config['socket']['maxconn']){
-                                    // If not, store the client socket then go back to listen
-                                    $this->libs['mc_socket_mgr']->add_client_socket($client_socket);
-                                    //continue;
-                                }else{
-                                    // Too many socket connections, reject new socket!
-                                    $reject_msg = 'Server is busy, please try later.';
-                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, $reject_msg);
-                                    socket_close($client_socket);
-                                }
+                    if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
+                        $result = $this->libs['mc_queue_mgr']->get_msg()
+                        if($result['status']){
+                            $job = $this->libs['mc_queue_mgr']->get_job($result['payload']);
+                            $worker_pid = pcntl_fork();
+                            if($worker_pid === -1){
+                            }elseif(!$worker_pid){
+                                // Worker part
+                                $this->proc_type = 'Worker';
+                                $this->pid = getmypid();
+
+                                // A worker should not have any child worker and only should have one client socket.
+                                $this->workers = array();
+
+                                $worker_thread_title = 'mc_worker_'.basename($job['msg']);
+                                setthreadtitle($worker_thread_title);
+                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
+                                $sleep = rand(3, 8);
+                                sleep($sleep);
+
+                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
+                                exit();
+                            }else{
+                                // Service daemond part
+                                $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job['msg']));
+                                $this->workers[] = $worker_pid;
                             }
-                        }
-
-                        // Process client request.
-                        foreach($this->libs['mc_socket_mgr']->client_sockets as $client_socket_key => $client_socket){
-                            if($this->libs['mc_socket_mgr']->is_request_from_client($client_socket)){
-                                if($input = socket_read($client_socket, 2048)){
-                                    // If client sending data, fork a child process(a worker process) to deal it.
-                                    $worker_pid = pcntl_fork();
-                                    if($worker_pid === -1){
-                                    }elseif(!$worker_pid){
-                                        // Worker part
-                                        $this->proc_type = 'Worker';
-                                        $this->pid = getmypid();
-
-                                        // A worker should not have any child worker and only should have one client socket.
-                                        $this->workers = array();
-                                        $this->libs['mc_socket_mgr']->client_sockets = array($client_socket);
-
-                                        $worker_thread_title = 'mc_worker_'.basename($input);
-                                        setthreadtitle($worker_thread_title);
-                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
-                                        $sleep = rand(3, 8);
-                                        sleep($sleep);
-
-                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job('.$this->pid.') is done!');
-
-                                        // Job done, close socket between worker and client.
-                                        //$this->libs['mc_socket_mgr']->close_client_socket($client_socket_key);
-                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
-                                        exit();
-                                    }else{
-                                        // Service daemond part
-                                        $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($input));
-                                        $this->workers[$worker_pid] = $client_socket_key;
-                                    }
-                                }
-                            }
+                        }else{
                         }
                     }
 
@@ -222,11 +187,11 @@ class masterchief extends daemond{
                     $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
                     while($finished_worker_pid > 0){
                         $this->libs['mc_log_mgr']->write_log("Found a finished worker(PID=$finished_worker_pid). Reaping it...");
-                        // After a worker is finished, close socket between service daemond and client.
-                        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
                         // Remove finished worker from exist worker record.
-                        unset($this->workers[$finished_worker_pid]);
+                        if($finished_worker_key = array_search($finished_worker_pid, $this->worker)){
+                            unset($this->workers[$finished_worker_key]);
+                        }
 
                         // Write log
                         $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
@@ -241,5 +206,5 @@ class masterchief extends daemond{
     }
 }
 
-$mc = new masterchief($argv);
+$mc = new cortana($argv);
 $mc->execute();
