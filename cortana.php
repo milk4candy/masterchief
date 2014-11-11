@@ -147,6 +147,8 @@ class cortana extends daemond{
                 // Disable output and set signal handler
                 $this->set_daemond_env();
 
+                declare(ticks=1);
+
                 // Build a message queue
                 $this->lib['mc_queue_mgr']->build_a_queue();
 

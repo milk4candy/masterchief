@@ -42,10 +42,21 @@ class mc_queue_mgr extends mc_basic_tool{
         return array('status'=>false, 'payload'=>array('err' => $err));
     }
 
-    public function get_job($msg){
+    public function parse_msg($msg){
         $job = array();
         $job['type'] = $msg['type'];
         $job['cmd'] = $msg['msg'];
+    }
+
+    public function send_msg($msg, $msg_type=1){
+        $is_serialized = false;
+        $is_block = false;
+        
+        if(msg_queue_exists($this->queue_id)){
+            $queue = msg_get_queue($this->queue_id);
+            if(msg_send($queue, $msg_type, $msg, $is_serialze, $is_block, $err)){
+            }
+        }
     }
 
 }

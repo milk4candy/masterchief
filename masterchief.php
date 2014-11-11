@@ -125,6 +125,77 @@ class masterchief extends daemond{
         }
     }
 
+    public function parse_socket_input($input){
+        $job = array();
+        $status = true;
+        $err = '';
+        $payload = array();
+        $input_array = explode(',', $input);
+        if(!in_array('-h', $input_array)){
+            $status = false;
+            $err .= "missing -h argument.\n";
+        }else{
+            $payload['host'] = $input_array[array_search('-h', $input_array)+1];
+        }
+        if(!in_array('-u', $input_array)){
+            $status = false;
+            $err .= "missing -u argument.\n";
+        }else{
+            $payload['username'] = $input_array[array_search('-u', $input_array)+1];
+        }
+        if(!in_array('-p', $input_array)){
+            $status = false;
+            $err .= "missing -p argument.\n";
+        }else{
+            $payload['passwd'] = $input_array[array_search('-p', $input_array)+1];
+        }
+        if(!in_array('--run-user', $input_array)){
+            $status = false;
+            $err .= "missing --run-user argument.\n";
+        }else{
+            $payload['run_user'] = $input_array[array_search('--run-user', $input_array)+1];
+        }
+        if(!in_array('--run-dir', $input_array)){
+            $status = false;
+            $err .= "missing --run-dir argument.\n";
+        }else{
+            $payload['run_dir'] = $input_array[array_search('--run-dir', $input_array)+1];
+        }
+        if(!in_array('--cmd', $input_array)){
+            $status = false;
+            $err .= "missing --cmd argument.\n";
+        }else{
+            $payload['cmd'] = $input_array[array_search('--cmd', $input_array)+1];
+        }
+        if(!in_array('--sync', $input_array) and !in_array('--async', $input_array)){
+            $payload['sync'] = false;
+        }elseif(in_array('--sync', $input_array) and in_array('--async', $input_array)){
+            $status = false;
+            $err .= "--sync and --async can't coexist.'";
+        }elseif(in_array('--sync', $input_array) and !in_array('--async', $input_array)){
+            $payload['sync'] = true;
+        }elseif(!in_array('--sync', $input_array) and in_array('--async', $input_array)){
+            $payload['sync'] = false;
+        }
+
+        $job['status'] = $status;
+        $job['payload'] = $payload;
+        $job['err'] = $err;
+
+        return $job;
+    }
+
+    public function authentication($job){
+        $username = $job['payload']['username'];
+        $password = $job['payload']['passwd'];
+        $host = $job['payload']['host'];
+        if(!($username == 'milk4candy' and $password == '2juxaxux')){
+            $job['status'] = false;
+            $job['err'] .= "Authentication fail.\n";
+        }
+        return $job;
+    }
+
     /*
      * This method will fork twice to make itself into a daemond.
      *      Something you should know about a daemond:
@@ -230,8 +301,20 @@ class masterchief extends daemond{
                             foreach($this->libs['mc_socket_mgr']->client_sockets as $client_socket_key => $client_socket){
                                 if($this->libs['mc_socket_mgr']->is_request_from_client($client_socket)){
                                     if($input = socket_read($client_socket, 2048)){
-                                        // If client sending data, fork a child process(a worker process) to deal it.
+
+                                        // parse input string to a organized job info array
+                                        $job = $this->parse_socket_input($input);
+                                        if(!$job['status']){
+                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, "Error when parsing arguments:\n".$job['err']);
+                                            $this->libs['mc_log_mgr']->write_log("Error when parsing arguments, worker(".$this->pid.") exits.");
+                                            exit();
+                                        }
+                                    
+                                        $job_command = explode(' ', $job['payload']['cmd']);
+
+                                        // If client sending validate data, fork a child process(a worker process) to deal it.
                                         $worker_pid = pcntl_fork();
+
                                         if($worker_pid === -1){
                                         }elseif(!$worker_pid){
                                             // Worker part
@@ -242,11 +325,20 @@ class masterchief extends daemond{
                                             $this->workers = array();
                                             $this->libs['mc_socket_mgr']->client_sockets = array($client_socket);
 
-                                            $worker_thread_title = 'mc_worker_'.basename($input);
+
+                                            $job = $this->authentication($job);
+                                            if(!$job['status']){
+                                                $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['err']);
+                                                $this->libs['mc_log_mgr']->write_log($job['err'].", worker(".$this->pid.") exits.");
+                                                exit();
+                                            }
+
+                                            $worker_thread_title = 'mc_worker_'.$this->pid;
                                             setthreadtitle($worker_thread_title);
                                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                             $sleep = rand(3, 8);
                                             sleep($sleep);
+                                            $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is running ".$job['payload']['cmd']);
 
                                             $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job('.$this->pid.') is done!');
 
@@ -258,7 +350,7 @@ class masterchief extends daemond{
                                                 
                                             // Put new worker and its socket in to a mapping array for future management.
                                             $this->workers[$worker_pid] = $client_socket_key;
-                                            $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($input));
+                                            $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_command[0]));
                                         }
                                     }
                                 }
