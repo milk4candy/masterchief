@@ -5,6 +5,7 @@ class mc_queue_mgr extends mc_basic_tool{
     public $config;
     public $queue_id;
     public $queue = null;
+    public $is_serializeid = true;
 
     public function __construct($config = array()){
         $this->config = $config;
@@ -15,6 +16,10 @@ class mc_queue_mgr extends mc_basic_tool{
         if(msg_queue_exists($this->queue_id)){
             $this->queue = msg_get_queue($this->queue_id);
         }
+    }
+
+    public function is_queue_exist(){
+        return msg_queue_exists($this->queue_id);
     }
 
     public function is_msg_in_queue(){
@@ -32,7 +37,7 @@ class mc_queue_mgr extends mc_basic_tool{
     public function get_msg(){
         $type_filter = -3;
         $max_size = 256;
-        $unserialized = true;
+        $unserialized = !$this->is_serialized;
         $flags = MSG_IPC_NOWAIT;
 
         if(msg_receive($this->queue, $type_filter, $msg_type, $max_size, $msg, $unserialized, $flags, $err)){
@@ -42,17 +47,11 @@ class mc_queue_mgr extends mc_basic_tool{
         return array('status'=>false, 'payload'=>array('err' => $err));
     }
 
-    public function parse_msg($msg){
-        $job = array();
-        $job['type'] = $msg['type'];
-        $job['cmd'] = $msg['msg'];
-    }
-
     public function send_msg($msg, $msg_type=1){
-        $is_serialized = false;
+        $is_serialized = $this->is_serialized;
         $is_block = false;
         
-        if(msg_queue_exists($this->queue_id)){
+        if($this->is_queue_exist()){
             $queue = msg_get_queue($this->queue_id);
             if(msg_send($queue, $msg_type, $msg, $is_serialze, $is_block, $err)){
             }

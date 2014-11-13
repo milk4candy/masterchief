@@ -28,6 +28,9 @@
                 $arg_key = array_search('-t', $args) + 1;
                 $this->socket_port = (int)$args[$arg_key];
             }
+            if(!in_array('-r', $args)){
+                array_push($args, '-r', 3);
+            }
             if(!in_array('-u', $args)){
                 echo 'Please use -u argument to provide username'."\n";
                 exit(1);
@@ -36,12 +39,8 @@
                 echo 'Please use -p argument to provide password'."\n";
                 exit(1);
             }
-            if(!in_array('--run-user', $args)){
-                echo 'Please use --run-user argument to provide run user'."\n";
-                exit(1);
-            }
-            if(!in_array('--run-dir', $args)){
-                echo 'Please use --run-dir argument to provide run directory'."\n";
+            if(!in_array('--dir', $args)){
+                echo 'Please use --dir argument to provide run directory'."\n";
                 exit(1);
             }
             if(!in_array('--cmd', $args)){

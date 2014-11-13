@@ -149,17 +149,11 @@ class masterchief extends daemond{
         }else{
             $payload['passwd'] = $input_array[array_search('-p', $input_array)+1];
         }
-        if(!in_array('--run-user', $input_array)){
+        if(!in_array('--dir', $input_array)){
             $status = false;
-            $err .= "missing --run-user argument.\n";
+            $err .= "missing --dir argument.\n";
         }else{
-            $payload['run_user'] = $input_array[array_search('--run-user', $input_array)+1];
-        }
-        if(!in_array('--run-dir', $input_array)){
-            $status = false;
-            $err .= "missing --run-dir argument.\n";
-        }else{
-            $payload['run_dir'] = $input_array[array_search('--run-dir', $input_array)+1];
+            $payload['dir'] = $input_array[array_search('--dir', $input_array)+1];
         }
         if(!in_array('--cmd', $input_array)){
             $status = false;
@@ -306,7 +300,7 @@ class masterchief extends daemond{
                                         $job = $this->parse_socket_input($input);
                                         if(!$job['status']){
                                             $this->libs['mc_socket_mgr']->reply_client($client_socket, "Error when parsing arguments:\n".$job['err']);
-                                            $this->libs['mc_log_mgr']->write_log("Error when parsing arguments, worker(".$this->pid.") exits.");
+                                            $this->libs['mc_log_mgr']->write_log("Error when parsing arguments, worker(".$this->pid.") exits.", 'ERROR');
                                             exit();
                                         }
                                     
@@ -316,6 +310,7 @@ class masterchief extends daemond{
                                         $worker_pid = pcntl_fork();
 
                                         if($worker_pid === -1){
+                                            $this->libs['mc_log_mgr']->write_log("Fail to create a worker", "ERROR");
                                         }elseif(!$worker_pid){
                                             // Worker part
                                             $this->proc_type = 'Worker';
@@ -325,7 +320,14 @@ class masterchief extends daemond{
                                             $this->workers = array();
                                             $this->libs['mc_socket_mgr']->client_sockets = array($client_socket);
 
+                                            // Change the thread title
+                                            $worker_thread_title = 'mc_worker_'.$this->pid;
+                                            setthreadtitle($worker_thread_title);
 
+
+                                            // Check if the job is allowed to execute.
+                                            // We will check three factors -- username, password and host.
+                                            // We will check LDAP first, then database.
                                             $job = $this->authentication($job);
                                             if(!$job['status']){
                                                 $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['err']);
@@ -333,18 +335,50 @@ class masterchief extends daemond{
                                                 exit();
                                             }
 
-                                            $worker_thread_title = 'mc_worker_'.$this->pid;
-                                            setthreadtitle($worker_thread_title);
+                                            // Excuting Job
                                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
-                                            $sleep = rand(3, 8);
-                                            sleep($sleep);
-                                            $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is running ".$job['payload']['cmd']);
-
-                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job('.$this->pid.') is done!');
+                                            $cmd = $job['payload']['cmd'];
+                                            if($job['payload']['sync']){
+                                                // Do the job now
+                                                $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is running '".$cmd."'");
+                                                $output = array();
+                                                exec($cmd.' 2>&1', $output, $exec_code);
+                                                $output_msg = implode("\n", $output);
+                                                if($exec_code == 0){
+                                                    // Job done. Write log and reply client.
+                                                    $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") runs '".$cmd."' successfully");
+                                                    if(count($output) > 0){
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') is done with following message:'."\n");
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, $output_msg);
+                                                    }else{
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') is done with no message:'."\n");
+                                                    }
+                                                }else{
+                                                    // Job fail. Write log and reply client
+                                                    $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") runs '".$cmd."' fail");
+                                                    if(count($output) > 0){
+                                                        $output_msg = implode("\n", $output);
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') fail with following message:'."\n");
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, $output_msg);
+                                                    }else{
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') fail with no message:'."\n");
+                                                    }
+                                                }
+                                            }else{
+                                                // Put the job into queue
+                                                // First, check queue exist or not
+                                                $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is trying to put '$cmd' into queue.");
+                                                if($this->libs['mc_queue_mgr']->is_queue_exist()){
+                                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "Job '$cmd' is in queue.");
+                                                }else{
+                                                    $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") found no queue exist. Please make sure cortana is running.");
+                                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "There's no job queue exist. Please contact system manager.");
+                                                }
+                                            }
 
                                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
-
                                             exit();
+
                                         }else{
                                             // Service daemond part
                                                 
