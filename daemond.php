@@ -5,6 +5,7 @@ abstract class daemond {
      * Define data members *
      ***********************/
 
+    public $classname;
     public $script_path;
     public $args;
     public $config;
@@ -23,15 +24,16 @@ abstract class daemond {
      * This method is constructor whic will execute when generate instance of this class.
      * Return: void
      */
-    public function __construct($cmd_args, $default_args = array()){
+    public function __construct($cmd_args){
         // Error report setting
         error_reporting(E_ALL);
 
         // Timezone setting
         date_default_timezone_set("Asia/Taipei");
-
+        
+        $this->classname = get_class($this);
         $this->script_path = dirname(__FILE__);
-        $this->args = $this->prepare_args($cmd_args, $default_args);
+        $this->args = $this->prepare_args($cmd_args);
         $this->config = $this->prepare_config();
         $this->init_libs();
         $this->pid = getmypid();
@@ -48,11 +50,11 @@ abstract class daemond {
      * This method will organize the incoming arguments to a array and return it.
      * Return: array
      */
-    public function prepare_args($cmd_args, $default_args){
+    public function prepare_args($cmd_args){
         $args = array();
 
         if(!in_array('-c', $cmd_args)){
-            $args['config'] = $this->script_path.'/config/'.$default_args['config_name'].'.ini';
+            $args['config'] = $this->script_path.'/config/'.$this->classname.'.ini';
         }else{
             $arg_key = array_search('-c', $cmd_args);
             $config_file = $cmd_args[$arg_key + 1];

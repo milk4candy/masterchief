@@ -2,13 +2,12 @@
 
 class mc_queue_mgr extends mc_basic_tool{
     
-    public $config;
     public $queue_id;
     public $queue = null;
     public $is_serializeid = true;
 
     public function __construct($config = array()){
-        $this->config = $config;
+        parent::__construct($config);
         $this->queue_id = $this->config['queue']['id'];
     }
 
@@ -37,11 +36,12 @@ class mc_queue_mgr extends mc_basic_tool{
     public function get_msg(){
         $type_filter = -3;
         $max_size = 256;
-        $unserialized = !$this->is_serialized;
+        $unserialized = $this->is_serialized;
         $flags = MSG_IPC_NOWAIT;
 
         if(msg_receive($this->queue, $type_filter, $msg_type, $max_size, $msg, $unserialized, $flags, $err)){
-            return array('status'=>true, 'payload'=>array('type' => $msg_type, 'msg' => $msg));
+            //return array('status'=>true, 'payload'=>array('type' => $msg_type, 'msg' => $msg));
+            return array('status'=>true, 'payload'=>$msg['payload']);
         }
         
         return array('status'=>false, 'payload'=>array('err' => $err));
@@ -53,9 +53,7 @@ class mc_queue_mgr extends mc_basic_tool{
         
         if($this->is_queue_exist()){
             $queue = msg_get_queue($this->queue_id);
-            if(msg_send($queue, $msg_type, $msg, $is_serialze, $is_block, $err)){
-            }
+            return msg_send($queue, $msg_type, $msg, $is_serialze, $is_block, $err);
         }
     }
-
 }

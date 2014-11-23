@@ -20,8 +20,8 @@ class cortana extends daemond{
      * This method is constructor whic will execute when generate instance of this class.
      * Return: void
      */
-    public function __construct($cmd_args, $default_args = array('config_name' => 'masterchief')){
-        parent::__construct($cmd_args, $default_args);
+    public function __construct($cmd_args){
+        parent::__construct($cmd_args);
     } 
 
 
@@ -130,6 +130,9 @@ class cortana extends daemond{
             // But before that, we invoke posix_setsid() to detach all controlling terminals from child process.
             posix_setsid();
 
+            // Even there are not much meaning, we still set pid attribute in cortana object in chlid process to the currect value.
+            $this->pid = getmypid();
+
             // Second fork
             $grand_child_pid = pcntl_fork();
 
@@ -143,6 +146,8 @@ class cortana extends daemond{
                 exit(); 
             }else{
                 // Daemond part
+                // We set pid attribute in cortana object in chlid process to the currect value.
+                $this->pid = getmypid();
 
                 // Disable output and set signal handler
                 $this->set_daemond_env();
@@ -154,9 +159,8 @@ class cortana extends daemond{
 
                 while(true){
                     if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
-                        $result = $this->libs['mc_queue_mgr']->get_msg()
-                        if($result['status']){
-                            $job = $this->libs['mc_queue_mgr']->get_job($result['payload']);
+                        $job = $this->libs['mc_queue_mgr']->get_msg();
+                        if($job['status']){
                             $worker_pid = pcntl_fork();
                             if($worker_pid === -1){
                             }elseif(!$worker_pid){
@@ -167,20 +171,27 @@ class cortana extends daemond{
                                 // A worker should not have any child worker and only should have one client socket.
                                 $this->workers = array();
 
-                                $worker_thread_title = 'mc_worker_'.basename($job['msg']);
+                                $worker_thread_title = 'mc_worker_'.basename($job['payload']['cmd']);
                                 setthreadtitle($worker_thread_title);
                                 $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                 $sleep = rand(3, 8);
                                 sleep($sleep);
 
+                                $log_msg ="Cortana will execute '".$job['payload']['cmd'].
+                                          "' under directory '".$job['payload']['dir']."' ".
+                                          "as user '".$job['payload']['run_user']."'";
+
+                                $this->libs['mc_log_mgr']->write_log($log_msg);
+
                                 $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                 exit();
                             }else{
                                 // Service daemond part
-                                $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job['msg']));
+                                $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job['payload']['cmd']));
                                 $this->workers[] = $worker_pid;
                             }
                         }else{
+                            // do something when get_msg fail.
                         }
                     }
 

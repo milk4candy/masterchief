@@ -29,7 +29,7 @@ class masterchief extends daemond{
      * Return: void
      */
     public function __construct($cmd_args){
-        parent::__construct($cmd_args, array('config_name' => 'main'));
+        parent::__construct($cmd_args);
     } 
 
 
@@ -155,6 +155,11 @@ class masterchief extends daemond{
         }else{
             $payload['dir'] = $input_array[array_search('--dir', $input_array)+1];
         }
+        if(!in_array('--run-user', $input_array)){
+            $payload['run_user'] = $input_array[array_search('-u', $input_array)+1];
+        }else{
+            $payload['run_user'] = $input_array[array_search('--run-user', $input_array)+1];
+        }
         if(!in_array('--cmd', $input_array)){
             $status = false;
             $err .= "missing --cmd argument.\n";
@@ -227,6 +232,9 @@ class masterchief extends daemond{
             // But before that, we invoke posix_setsid() to detach all controlling terminals from child process.
             posix_setsid();
 
+            // Even there are not much meaning, we still set pid attribute in mastercheif object in child process to correct value.
+            $this->pid = getmypid();
+
             // Second fork
             $grand_child_pid = pcntl_fork();
 
@@ -240,6 +248,8 @@ class masterchief extends daemond{
             }else{
 
                 // Grand child process part, also the Daemond part.
+                // We set pid attribute in mastercheif object in grand child process to the correct value.
+                $this->pid = getmypid();
 
                 // Disable output and set signal handler
                 $this->set_daemond_env();
@@ -251,7 +261,7 @@ class masterchief extends daemond{
 
                 while(true){
                     /*
-                     *  In PHP, we can use "declare" key word to declare ticks key word to a certain interger number to apply ticks mechanism on a peice of code area.
+                     *  In PHP, we can use "declare" key word to declare "ticks" key word to a certain interger number to apply ticks mechanism on a peice of code area.
                      *  In code area with ticks mechanism, a tick event will be rasied when PHP runs certain number of PHP statements(the number here depends on the number assigned to ticks).
                      *  When a tick event happen, PHP will invoke every function which is registered by a register_tick_function() function(if there is any).
                      *  For example, like following snippet:
@@ -304,7 +314,7 @@ class masterchief extends daemond{
                                             exit();
                                         }
                                     
-                                        $job_command = explode(' ', $job['payload']['cmd']);
+                                        $job_cmd = explode(' ', $job['payload']['cmd']);
 
                                         // If client sending validate data, fork a child process(a worker process) to deal it.
                                         $worker_pid = pcntl_fork();
@@ -327,7 +337,7 @@ class masterchief extends daemond{
 
                                             // Check if the job is allowed to execute.
                                             // We will check three factors -- username, password and host.
-                                            // We will check LDAP first, then database.
+                                            // We will check map array first, then LDAP, database at last.
                                             $job = $this->authentication($job);
                                             if(!$job['status']){
                                                 $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['err']);
@@ -369,7 +379,11 @@ class masterchief extends daemond{
                                                 // First, check queue exist or not
                                                 $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is trying to put '$cmd' into queue.");
                                                 if($this->libs['mc_queue_mgr']->is_queue_exist()){
-                                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "Job '$cmd' is in queue.");
+                                                    if($this->libs['mc_queue_mgr']->send_msg($job)){
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, "Job '$cmd' is in queue.");
+                                                    }else{
+                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, "Can't put Job '$cmd' in queue.");
+                                                    }
                                                 }else{
                                                     $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") found no queue exist. Please make sure cortana is running.");
                                                     $this->libs['mc_socket_mgr']->reply_client($client_socket, "There's no job queue exist. Please contact system manager.");
@@ -384,7 +398,7 @@ class masterchief extends daemond{
                                                 
                                             // Put new worker and its socket in to a mapping array for future management.
                                             $this->workers[$worker_pid] = $client_socket_key;
-                                            $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_command[0]));
+                                            $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
                                         }
                                     }
                                 }
