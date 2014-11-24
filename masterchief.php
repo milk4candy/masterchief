@@ -376,18 +376,18 @@ class masterchief extends daemond{
                                                 }
                                             }else{
                                                 // Put the job into queue
-                                                // First, check queue exist or not
                                                 $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is trying to put '$cmd' into queue.");
-                                                if($this->libs['mc_queue_mgr']->is_queue_exist()){
-                                                    if($this->libs['mc_queue_mgr']->send_msg($job)){
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, "Job '$cmd' is in queue.");
-                                                    }else{
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, "Can't put Job '$cmd' in queue.");
-                                                    }
+                                                $send_result = $this->libs['mc_queue_mgr']->send_msg($job);
+
+                                                $reply_msg = '';
+                                                if($send_result['status']){
+                                                    $reply_msg = "Job '$cmd' is put in queue by worker(".$this->pid.").";
                                                 }else{
-                                                    $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") found no queue exist. Please make sure cortana is running.");
-                                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "There's no job queue exist. Please contact system manager.");
+                                                    $reply_msg = "Worker(".$this->pid.") can't put Job '$cmd' in queue because ".$send_result['msg'];
                                                 }
+
+                                                $this->libs['mc_socket_mgr']->reply_client($client_socket, $reply_msg);
+                                                $this->libs['mc_log_mgr']->write_log($reply_msg, $send_result['level']);
                                             }
 
                                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");

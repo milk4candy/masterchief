@@ -41,11 +41,10 @@ class cortana extends daemond{
                 $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
                 if($finished_worker_pid > 0){
                     $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) is sending exit signal. Reaping it...");
-                    // After a worker is finished, close socket between service daemond and client.
-                    $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
                     // Remove finished worker from exist worker record.
-                    unset($this->workers[$finished_worker_pid]);
+                    //unset($this->workers[$finished_worker_pid]);
+                    unset($this->workers[array_search($finished_worker_pid, $this->workers)]);
 
                     // Write log
                     $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
@@ -66,10 +65,10 @@ class cortana extends daemond{
                 while(count($this->workers) > 0){
                     if($finished_worker_pid > 0){
                         $this->libs['mc_log_mgr']->write_log("Reaping worker(PID=$finished_worker_pid)...");
-                        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
                         // Remove finished worker from exist worker record.
-                        unset($this->workers[$finished_worker_pid]);
+                        //unset($this->workers[$finished_worker_pid]);
+                        unset($this->workers[array_search($finished_worker_pid, $this->workers)]);
 
                         // Write log
                         $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) was reaped.");
@@ -89,6 +88,27 @@ class cortana extends daemond{
 
                 $this->libs['mc_log_mgr']->write_log($this->proc_type.'('.$this->pid.') stop!');
                 exit();
+        }
+    }
+
+    public function clear_uncaptured_zombies(){
+        // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
+        // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
+        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+        while($finished_worker_pid > 0){
+            $this->libs['mc_log_mgr']->write_log("Found a finished worker(PID=$finished_worker_pid). Reaping it...");
+
+            // Remove finished worker from exist worker record.
+            if($finished_worker_key = array_search($finished_worker_pid, $this->worker)){
+                //unset($this->workers[$finished_worker_key]);
+                unset($this->workers[array_search($finished_worker_pid, $this->workers)]);
+            }
+
+            // Write log
+            $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
+
+            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+            usleep(100000);
         }
     }
 
@@ -154,64 +174,50 @@ class cortana extends daemond{
 
                 declare(ticks=1);
 
-                // Build a message queue
-                $this->lib['mc_queue_mgr']->build_a_queue();
+                $this->libs['mc_log_mgr']->write_log("Daemond start");
 
                 while(true){
-                    if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
-                        $job = $this->libs['mc_queue_mgr']->get_msg();
-                        if($job['status']){
-                            $worker_pid = pcntl_fork();
-                            if($worker_pid === -1){
-                            }elseif(!$worker_pid){
-                                // Worker part
-                                $this->proc_type = 'Worker';
-                                $this->pid = getmypid();
+                    declare(ticks=1){
+                        if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
+                            $job = $this->libs['mc_queue_mgr']->get_msg();
+                            if($job['status']){
+                                $worker_pid = pcntl_fork();
+                                if($worker_pid === -1){
+                                }elseif(!$worker_pid){
+                                    // Worker part
+                                    $this->proc_type = 'Worker';
+                                    $this->pid = getmypid();
 
-                                // A worker should not have any child worker and only should have one client socket.
-                                $this->workers = array();
+                                    // A worker should not have any child worker and only should have one client socket.
+                                    $this->workers = array();
 
-                                $worker_thread_title = 'mc_worker_'.basename($job['payload']['cmd']);
-                                setthreadtitle($worker_thread_title);
-                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
-                                $sleep = rand(3, 8);
-                                sleep($sleep);
+                                    $worker_thread_title = 'ctn_worker_'.$this->pid;
+                                    setthreadtitle($worker_thread_title);
+                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
+                                    $sleep = rand(3, 8);
+                                    sleep($sleep);
 
-                                $log_msg ="Cortana will execute '".$job['payload']['cmd'].
-                                          "' under directory '".$job['payload']['dir']."' ".
-                                          "as user '".$job['payload']['run_user']."'";
+                                    $log_msg ="Cortana will execute '".$job['payload']['cmd'].
+                                              "' under directory '".$job['payload']['dir']."' ".
+                                              "as user '".$job['payload']['run_user']."'";
 
-                                $this->libs['mc_log_mgr']->write_log($log_msg);
+                                    $this->libs['mc_log_mgr']->write_log($log_msg);
 
-                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
-                                exit();
+                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
+                                    exit();
+                                }else{
+                                    // Service daemond part
+                                    $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job['payload']['cmd']));
+                                    $this->workers[] = $worker_pid;
+                                }
                             }else{
-                                // Service daemond part
-                                $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job['payload']['cmd']));
-                                $this->workers[] = $worker_pid;
+                                // do something when get_msg fail.
                             }
-                        }else{
-                            // do something when get_msg fail.
                         }
                     }
+    
+                    $this->clear_uncaptured_zombies();
 
-                    // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
-                    // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
-                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
-                    while($finished_worker_pid > 0){
-                        $this->libs['mc_log_mgr']->write_log("Found a finished worker(PID=$finished_worker_pid). Reaping it...");
-
-                        // Remove finished worker from exist worker record.
-                        if($finished_worker_key = array_search($finished_worker_pid, $this->worker)){
-                            unset($this->workers[$finished_worker_key]);
-                        }
-
-                        // Write log
-                        $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
-
-                        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
-                        usleep(100000);
-                    }
                     usleep(200000);
                 }
             }
