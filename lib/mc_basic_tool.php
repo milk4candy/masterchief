@@ -1,6 +1,6 @@
 <?php
 
-class mc_basic_tool {
+abstract class mc_basic_tool {
 
     /*************************
      ** Define data members **

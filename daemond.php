@@ -82,15 +82,20 @@ abstract class daemond {
      * Return: void
      */
     public function init_libs($lib_dir='./lib'){
-        require("./lib/mc_basic_tool.php");
-
         // Initial a empty array as a container for library objects
         $this->libs = array();
 
         // Read all requeired libraries defined in config file
         foreach($this->config['basic']['libraries'] as $lib_name){
             require("$lib_dir/$lib_name.php");
-            $this->libs[$lib_name] = new $lib_name($this->config);
+            $class = new ReflectionClass($lib_name);
+            if(!$class->isAbstract()){
+                if(preg_match('/^mc_/', $lib_name)){
+                    $this->libs[$lib_name] = new $lib_name($this->config);
+                }else{
+                    $this->libs[$lib_name] = new $lib_name();
+                }
+            }
         }
     }
 
@@ -114,6 +119,25 @@ abstract class daemond {
         pcntl_signal(SIGINT, array($this,'signal_handler'));
         pcntl_signal(SIGCHLD, array($this,'signal_handler'));
         pcntl_signal(SIGUSR1, array($this,'signal_handler'));
+    }
+
+    public function authenticate_job($job){
+        $user = $job['payload']['user'];
+        $passwd = $job['payload']['passwd'];
+        $run_user = $job['payload']['run_user'];
+        $cmd = $job['payload']['cmd'];
+
+        // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
+        system("./auth.py $user $passwd >/dev/null 2>&1", $pass_auth);
+        if($pass_auth){
+            $sudo_check = $this->libs['sudo_checker']->do_check($user, $run_user, $cmd);
+            $job['status'] = $sudo_check['status'];
+            $job['msg'] = $sudo_check['msg'];
+        }else{
+            $job['status'] = false;
+            $job['msg'] = "Can't pass account authentication. Please make sure your username and password is correct.";
+        }
+        return $job;
     }
 
     /*

@@ -33,6 +33,10 @@ class masterchief extends daemond{
     } 
 
 
+    /*
+     * This method is destructor whic will execute when instance of this class destroy.
+     * Return: void
+     */
     public function __destruct(){
         parent::__destruct();
     }
@@ -105,6 +109,10 @@ class masterchief extends daemond{
         }
     }
 
+    /*
+     *  This method is used to reap any exist zombie child process.
+     *  Return: void
+     */
     public function clear_uncaptured_zombies(){
         // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
         // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
@@ -141,7 +149,7 @@ class masterchief extends daemond{
             $status = false;
             $err .= "missing -u argument.\n";
         }else{
-            $payload['username'] = $input_array[array_search('-u', $input_array)+1];
+            $payload['user'] = $input_array[array_search('-u', $input_array)+1];
         }
         if(!in_array('-p', $input_array)){
             $status = false;
@@ -179,19 +187,8 @@ class masterchief extends daemond{
 
         $job['status'] = $status;
         $job['payload'] = $payload;
-        $job['err'] = $err;
+        $job['msg'] = $err;
 
-        return $job;
-    }
-
-    public function authentication($job){
-        $username = $job['payload']['username'];
-        $password = $job['payload']['passwd'];
-        $host = $job['payload']['host'];
-        if(!($username == 'milk4candy' and $password == '2juxaxux')){
-            $job['status'] = false;
-            $job['err'] .= "Authentication fail.\n";
-        }
         return $job;
     }
 
@@ -309,7 +306,7 @@ class masterchief extends daemond{
                                         // parse input string to a organized job info array
                                         $job = $this->parse_socket_input($input);
                                         if(!$job['status']){
-                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, "Error when parsing arguments:\n".$job['err']);
+                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, "Error when parsing arguments:\n".$job['msg']);
                                             $this->libs['mc_log_mgr']->write_log("Error when parsing arguments, worker(".$this->pid.") exits.", 'ERROR');
                                             exit();
                                         }
@@ -336,12 +333,10 @@ class masterchief extends daemond{
 
 
                                             // Check if the job is allowed to execute.
-                                            // We will check three factors -- username, password and host.
-                                            // We will check map array first, then LDAP, database at last.
-                                            $job = $this->authentication($job);
+                                            $job = $this->authenticate_job($job);
                                             if(!$job['status']){
-                                                $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['err']);
-                                                $this->libs['mc_log_mgr']->write_log($job['err'].", worker(".$this->pid.") exits.");
+                                                $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['msg']);
+                                                $this->libs['mc_log_mgr']->write_log($job['msg'].", worker(".$this->pid.") exits.");
                                                 exit();
                                             }
 

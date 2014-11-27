@@ -172,8 +172,6 @@ class cortana extends daemond{
                 // Disable output and set signal handler
                 $this->set_daemond_env();
 
-                declare(ticks=1);
-
                 $this->libs['mc_log_mgr']->write_log("Daemond start");
 
                 while(true){
@@ -193,6 +191,14 @@ class cortana extends daemond{
 
                                     $worker_thread_title = 'ctn_worker_'.$this->pid;
                                     setthreadtitle($worker_thread_title);
+
+                                    // Check if the job is allowed to execute
+                                    $job = $this->authenticate_job($job);
+                                    if(!$job['status']){
+                                        $this->libs['mc_log_mgr']->write_log($job['msg'].", worker(".$this->pid.") exits.");
+                                        exit();
+                                    }
+
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                     $sleep = rand(3, 8);
                                     sleep($sleep);
