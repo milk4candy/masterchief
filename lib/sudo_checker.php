@@ -27,13 +27,13 @@ class sudo_checker{
                     }
                 }
                 if($pass_all_rules){
-                    return array('status' => $pass_all_rules, 'msg' => "User $user is allowed execute $cmd as user $as_user.");
+                    return array('status' => $pass_all_rules, 'msg' => "", 'msg_level' => "INFO");
                 }
-                return array('status' => $pass_all_rules, 'msg' => "User $user is NOT allowed execute $cmd as user $as_user.");
+                return array('status' => $pass_all_rules, 'msg' => "User $user is NOT allowed execute $cmd as user $as_user.", 'msg_level' => "WARNING");
             }
-            return array('status' => $pass_all_rules, 'msg' => "User $user is not allowed to use sudo.");
+            return array('status' => $pass_all_rules, 'msg' => "User $user is not allowed to use sudo.", 'msg_level' => "WARNING");
         }
-        return array('status' => $pass_all_rules, 'msg' => "Can't get sudo info.");
+        return array('status' => $pass_all_rules, 'msg' => "Can't get sudo info.", 'msg_level' => "ERROR");
     }
 
     /*
@@ -131,7 +131,9 @@ class sudo_checker{
         $pass_this_rule = 'neutral';
         $cmd_seg = explode(' ', $cmd);
         $cmd_wo_arg = $cmd_seg[0];
-        $cmd_fullpath = system("readlink -f `which $cmd_wo_arg`");
+
+        exec("readlink -f `which $cmd_wo_arg`", $output, $exec_code);
+        $cmd_fullpath = $output[0];
 
         $deny_cmds = $cmd_rule['deny'];
         $allow_cmds = $cmd_rule['allow'];

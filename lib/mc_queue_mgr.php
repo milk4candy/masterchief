@@ -17,9 +17,6 @@ class mc_queue_mgr extends mc_basic_tool{
     }
 
     public function is_queue_exist(){
-        if(!$this->queue){
-            $this->build_a_queue();
-        }
         return $this->queue;
     }
 
@@ -45,18 +42,18 @@ class mc_queue_mgr extends mc_basic_tool{
 
     public function get_msg(){
         $type_filter = -3;
-        $max_size = 256;
+        $max_size = 4096;
         $unserialized = $this->is_serialize;
         $flags = MSG_IPC_NOWAIT;
 
         if($this->is_queue_exist()){
-            if(msg_receive($this->queue, $type_filter, $msg_type, $max_size, $msg, $unserialized, $flags, $err)){
-                //return array('status'=>true, 'payload'=>array('type' => $msg_type, 'msg' => $msg));
-                return array('status'=>true, 'payload'=>$msg['payload']);
+            if(msg_receive(msg_get_queue($this->queue_id), $type_filter, $msg_type, $max_size, $msg, $unserialized, $flags, $err)){
+                return array('status'=>true, 'payload'=>$msg['payload'], 'msg'=> 'Get meaasge successfully', 'msg_level' => 'INFO');
             }
+            return array('status'=>false, 'msg' => "Can't get message from queue. Error code is: ".$err, 'msg_level' => "ERROR");
         }
         
-        return array('status'=>false, 'payload'=>array('err' => $err));
+        return array('status'=>false, 'msg' => "Can't get message from queue. There is no queue exists.", 'msg_level' => "ERROR");
     }
 
     public function send_msg($msg, $msg_type=1){
@@ -68,17 +65,22 @@ class mc_queue_mgr extends mc_basic_tool{
             if($this->get_msg_num() < $this->config['queue']['maxqueue']){
                 $status = msg_send($this->queue, $msg_type, $msg, $is_serialize, $is_block, $err);
                 $payload['status'] = $status;
-                $payload['msg'] = $err;
-                $payload['level'] = 'INFO';
+                if($status){
+                    $payload['msg'] = 'Job has been put in queue.';
+                    $payload['level'] = 'INFO';
+                }else{
+                    $payload['msg'] = 'Something wrong when sending Job.';
+                    $payload['level'] = 'ERROR';
+                }
                 return $payload;
             }
             $payload['status'] = false;
-            $payload['msg'] = 'queue is full right now('.$this->get_msg_num().') Please try later.';
-            $payload['level'] = 'INFO';
+            $payload['msg'] = 'Queue is full right now('.$this->get_msg_num().') Please try later.';
+            $payload['level'] = 'WARNING';
             return $payload;
         }
         $payload['status'] = false;
-        $payload['msg'] = 'there is no queue exists.';
+        $payload['msg'] = 'There is no queue exists.';
         $payload['level'] = 'ERROR';
 
         return $payload;

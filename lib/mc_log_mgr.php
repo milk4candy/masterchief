@@ -31,7 +31,7 @@ class mc_log_mgr extends mc_basic_tool{
                 file_put_contents($this->log, $msg."\n", FILE_APPEND|LOCK_EX);
             }else{
                 $this->create_dir(dirname($this->errlog));
-                file_put_contents($errlog, $msg."\n", FILE_APPEND|LOCK_EX);
+                file_put_contents($this->errlog, $msg."\n", FILE_APPEND|LOCK_EX);
             }
 
         }catch(Exception $e){

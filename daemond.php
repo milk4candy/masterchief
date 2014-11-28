@@ -104,6 +104,9 @@ abstract class daemond {
      * Return: void
      */
     public function set_daemond_env(){
+        // Change directory to daemond location.
+        chdir($this->script_path);        
+
         // Because a daemond has no controlling terminal, it will raise some problems if daemond try to ouput something.
         // Hence, we disable all output
         fclose(STDIN);
@@ -112,7 +115,9 @@ abstract class daemond {
         $STDIN = fopen('/dev/null', 'r');
         $STDOUT = fopen('/dev/null', 'wb');
         $STDERR = fopen('/dev/null', 'wb');
+    }
 
+    public function set_signal_handler(){
         // Set signal handler
         pcntl_signal(SIGTERM, array($this,'signal_handler'));
         pcntl_signal(SIGHUP, array($this,'signal_handler'));
@@ -128,14 +133,21 @@ abstract class daemond {
         $cmd = $job['payload']['cmd'];
 
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
-        system("./auth.py $user $passwd >/dev/null 2>&1", $pass_auth);
-        if($pass_auth){
-            $sudo_check = $this->libs['sudo_checker']->do_check($user, $run_user, $cmd);
-            $job['status'] = $sudo_check['status'];
-            $job['msg'] = $sudo_check['msg'];
+        exec($this->script_path."/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
+        if($pass_auth == 0){
+            if($user == $run_user){
+                $job['msg'] = 'Pass account authentication.';
+                $job['msg_level'] = 'INFO';
+            }else{
+                $sudo_check = $this->libs['sudo_checker']->do_check($user, $run_user, $cmd);
+                $job['status'] = $sudo_check['status'];
+                $job['msg'] = $sudo_check['msg'];
+                $job['msg_level'] = $sudo_check['msg_level'];
+            }
         }else{
             $job['status'] = false;
             $job['msg'] = "Can't pass account authentication. Please make sure your username and password is correct.";
+            $job['msg_level'] = "WARNING";
         }
         return $job;
     }

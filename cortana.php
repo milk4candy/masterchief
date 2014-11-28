@@ -171,6 +171,7 @@ class cortana extends daemond{
 
                 // Disable output and set signal handler
                 $this->set_daemond_env();
+                $this->set_signal_handler();
 
                 $this->libs['mc_log_mgr']->write_log("Daemond start");
 
@@ -192,32 +193,76 @@ class cortana extends daemond{
                                     $worker_thread_title = 'ctn_worker_'.$this->pid;
                                     setthreadtitle($worker_thread_title);
 
+                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
+
                                     // Check if the job is allowed to execute
                                     $job = $this->authenticate_job($job);
                                     if(!$job['status']){
-                                        $this->libs['mc_log_mgr']->write_log($job['msg'].", worker(".$this->pid.") exits.");
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title : ".$job['msg'], $job['msg_level']);
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                         exit();
                                     }
 
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                     $sleep = rand(3, 8);
                                     sleep($sleep);
 
-                                    $log_msg ="Cortana will execute '".$job['payload']['cmd'].
-                                              "' under directory '".$job['payload']['dir']."' ".
-                                              "as user '".$job['payload']['run_user']."'";
+                                    // Excuting Job
+                                    $user = $job['payload']['user'];
+                                    $passwd = $job['payload']['passwd'];
+                                    $cmd = $job['payload']['cmd'];
+                                    $dir = $job['payload']['dir'];
+                                    $run_user = $job['payload']['run_user'];
+                                    $log = array();
 
-                                    $this->libs['mc_log_mgr']->write_log($log_msg);
+                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user '$run_user'.");
 
+                                    // Execute command
+                                    $output = array();
+                                    if($run_user == $user){
+                                        if($run_user == 'root'){
+                                            exec("cd $dir && $cmd 2>&1", $output, $exec_code);
+                                        }else{
+                                            exec("su -l $user -c 'cd $dir && $cmd' 2>&1", $output, $exec_code);
+                                        }
+                                    }else{
+                                        if($run_user == 'root'){
+                                            exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
+                                        }else{
+                                            exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
+                                        }
+                                    }
+                                    if($exec_code == 0){
+                                        if(count($output) > 0){
+                                            $output_msg = implode("\n", $output);
+                                            $log['msg'] = "$worker_thread_title executed the job sucessfully with following meaasge:\n$output_msg";
+                                            $log['level'] = "INFO";
+                                        }else{
+                                            $log['msg'] = "$worker_thread_title executed the job sucessfully with no meaasge.";
+                                            $log['level'] = "INFO";
+                                        }
+                                    }else{
+                                        if(count($output) > 0){
+                                            $output_msg = implode("\n", $output);
+                                            $log['msg'] = "$worker_thread_title executed the job abnormally with following meaasge:\n$output_msg";
+                                            $log['level'] = "WARNING";
+                                        }else{
+                                            $log['msg'] = "$worker_thread_title executed the job abnormally with no meaasge.";
+                                            $log['level'] = "WARNING";
+                                        }
+                                    }
+
+                                    $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                     exit();
                                 }else{
                                     // Service daemond part
-                                    $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job['payload']['cmd']));
                                     $this->workers[] = $worker_pid;
+                                    $job_cmd = explode(' ', $job['payload']['cmd']);
+                                    $this->libs['mc_log_mgr']->write_log("Create a worker(ctn_worker_$worker_pid) for ".basename($job_cmd[0]));
                                 }
                             }else{
                                 // do something when get_msg fail.
+                                $this->libs['mc_log_mgr']->write_log("Can't get message from queue. ".$job['msg'], $job['msg_level']);
                             }
                         }
                     }

@@ -188,6 +188,7 @@ class masterchief extends daemond{
         $job['status'] = $status;
         $job['payload'] = $payload;
         $job['msg'] = $err;
+        $job['msg_level'] = $status ? "INFO" : "WARNING";
 
         return $job;
     }
@@ -250,6 +251,7 @@ class masterchief extends daemond{
 
                 // Disable output and set signal handler
                 $this->set_daemond_env();
+                $this->set_signal_handler();
 
                 // Build a service socket
                 $this->libs['mc_socket_mgr']->build_service_socket();
@@ -306,12 +308,10 @@ class masterchief extends daemond{
                                         // parse input string to a organized job info array
                                         $job = $this->parse_socket_input($input);
                                         if(!$job['status']){
-                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, "Error when parsing arguments:\n".$job['msg']);
-                                            $this->libs['mc_log_mgr']->write_log("Error when parsing arguments, worker(".$this->pid.") exits.", 'ERROR');
+                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, "Missing argument: ".$job['msg']);
+                                            $this->libs['mc_log_mgr']->write_log("Missing argument: ".$job['msg'].", worker(".$this->pid.") exits.", $job['msg_level']);
                                             exit();
                                         }
-                                    
-                                        $job_cmd = explode(' ', $job['payload']['cmd']);
 
                                         // If client sending validate data, fork a child process(a worker process) to deal it.
                                         $worker_pid = pcntl_fork();
@@ -331,60 +331,79 @@ class masterchief extends daemond{
                                             $worker_thread_title = 'mc_worker_'.$this->pid;
                                             setthreadtitle($worker_thread_title);
 
+                                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
 
                                             // Check if the job is allowed to execute.
                                             $job = $this->authenticate_job($job);
                                             if(!$job['status']){
                                                 $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['msg']);
-                                                $this->libs['mc_log_mgr']->write_log($job['msg'].", worker(".$this->pid.") exits.");
+                                                $this->libs['mc_log_mgr']->write_log("$worker_thread_titlei : ".$job['msg'], $job['msg_level']);
+                                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                                 exit();
                                             }
 
                                             // Excuting Job
-                                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
+                                            $user = $job['payload']['user'];
+                                            $passwd = $job['payload']['passwd'];
                                             $cmd = $job['payload']['cmd'];
+                                            $dir = $job['payload']['dir'];
+                                            $run_user = $job['payload']['run_user'];
+                                            $log = array();
+
+                                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user $run_user");
+
                                             if($job['payload']['sync']){
                                                 // Do the job now
-                                                $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is running '".$cmd."'");
+                                                
+                                                // Execute command
                                                 $output = array();
-                                                exec($cmd.' 2>&1', $output, $exec_code);
-                                                $output_msg = implode("\n", $output);
-                                                if($exec_code == 0){
-                                                    // Job done. Write log and reply client.
-                                                    $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") runs '".$cmd."' successfully");
-                                                    if(count($output) > 0){
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') is done with following message:'."\n");
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, $output_msg);
+                                                if($run_user == $user){
+                                                    if($run_user == 'root'){
+                                                        exec("cd $dir && $cmd 2>&1", $output, $exec_code);
                                                     }else{
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') is done with no message:'."\n");
+                                                        exec("su -l $user -c 'cd $dir && $cmd' 2>&1", $output, $exec_code);
                                                     }
                                                 }else{
-                                                    // Job fail. Write log and reply client
-                                                    $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") runs '".$cmd."' fail");
+                                                    if($run_user == 'root'){
+                                                        exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
+                                                    }else{
+                                                        exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
+                                                    }
+                                                }
+                                                if($exec_code == 0){
+                                                    // Job done.
                                                     if(count($output) > 0){
                                                         $output_msg = implode("\n", $output);
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') fail with following message:'."\n");
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, $output_msg);
+                                                        $log['msg'] = "$worker_thread_title execute job successfully with following message:\n$output_msg";
+                                                        $log['level'] = "INFO";
                                                     }else{
-                                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, 'Job(PID='.$this->pid.') fail with no message:'."\n");
+                                                        $log['msg'] = "$worker_thread_title execute job successfully with no message.";
+                                                        $log['level'] = "INFO";
+                                                    }
+                                                }else{
+                                                    // Job fail.
+                                                    if(count($output) > 0){
+                                                        $output_msg = implode("\n", $output);
+                                                        $log['msg'] = "$worker_thread_title execute job abnormally with following message:\n$output_msg";
+                                                        $log['level'] = "WARNING";
+                                                    }else{
+                                                        $log['msg'] = "$worker_thread_title execute job abnormally with no message.";
+                                                        $log['level'] = "WARNING";
                                                     }
                                                 }
+
                                             }else{
-                                                // Put the job into queue
-                                                $this->libs['mc_log_mgr']->write_log("Worker(PID=".$this->pid.") is trying to put '$cmd' into queue.");
+                                                // Put job in queue
+                                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title is putting job into queue.");
                                                 $send_result = $this->libs['mc_queue_mgr']->send_msg($job);
 
-                                                $reply_msg = '';
-                                                if($send_result['status']){
-                                                    $reply_msg = "Job '$cmd' is put in queue by worker(".$this->pid.").";
-                                                }else{
-                                                    $reply_msg = "Worker(".$this->pid.") can't put Job '$cmd' in queue because ".$send_result['msg'];
-                                                }
-
-                                                $this->libs['mc_socket_mgr']->reply_client($client_socket, $reply_msg);
-                                                $this->libs['mc_log_mgr']->write_log($reply_msg, $send_result['level']);
+                                                $log['msg']= "$worker_thread_title : ".$send_result['msg'];
+                                                $log['level'] = $send_result['level'];
                                             }
 
+                                            //Write log and reply client
+                                            $this->libs['mc_socket_mgr']->reply_client($client_socket, $log['msg']);
+                                            $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
                                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                             exit();
 
@@ -393,7 +412,8 @@ class masterchief extends daemond{
                                                 
                                             // Put new worker and its socket in to a mapping array for future management.
                                             $this->workers[$worker_pid] = $client_socket_key;
-                                            $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
+                                            $job_cmd = explode(' ', $job['payload']['cmd']);
+                                            $this->libs['mc_log_mgr']->write_log("Create a worker(mc_worker_$worker_pid) for ".basename($job_cmd[0]));
                                         }
                                     }
                                 }
