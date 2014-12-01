@@ -2,9 +2,9 @@
 
 <?php
 
-require('daemond.php');
+require(__DIR__.'/lib/core/mc_daemon.php');
 
-class cortana extends daemond{
+class cortana extends mc_daemon{
 
     /***********************
      * Define data members *
@@ -24,7 +24,10 @@ class cortana extends daemond{
         parent::__construct($cmd_args);
     } 
 
-
+    /*
+     * This method is constructor whic will execute when instance of this class is destroyed.
+     * Return: void
+     */
     public function __destruct(){
         parent::__destruct();
     }
@@ -91,6 +94,10 @@ class cortana extends daemond{
         }
     }
 
+    /*
+     *  This method is used to reap any exist zombie child process.
+     *  Return: void
+     */
     public function clear_uncaptured_zombies(){
         // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
         // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
@@ -113,168 +120,112 @@ class cortana extends daemond{
     }
 
     /*
-     * This method will fork twice to make itself into a daemond.
-     *      Something you should know about a daemond:
-     *      The most important thing about daemond is it has to run forever. 
-     *      In order to do that, the first thing is make it the child of init process. And we can do it by one fork and make the father exit.
-     *      Also we do not want the daemond has a controlling terminal neither because we do not want someone accidently terminate a daemond using controlling terminal.
-     *      To do that, we will invoke posix_setsid() in child process to make it a new session and process group leader which will detach it from any exist controlling terminal.
-     *      But a session leader still has chance to regain a controlling terminal, so we have to invoke fork in child process again.
-     *      Because grand child will not be a process group and session leader, it can not obtain a controlling terminal.
-     *      Finally, we make child process exit making grand child process a orphan process which will be adopted by init process.
-     *      And here is a basic daemond structure.
-     * It will listen a queue for incoming job request.
+     * This method will run an infinity loop to listen a queue for incoming job request.
      * Onec it receive a job request, it will fork a child worker process to execute the job.
      * It will also write logs to local files and database.
      * Return: void
      */
-    public function execute(){
-        // First fork
-        $child_pid = pcntl_fork();
+    public function daemon_loop(){
+        while(true){
+            declare(ticks=1){
+                if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
+                    $job = $this->libs['mc_queue_mgr']->get_msg();
+                    if($job['status']){
+                        $worker_pid = pcntl_fork();
+                        if($worker_pid === -1){
+                        }elseif(!$worker_pid){
+                            // Worker part
+                            $this->proc_type = 'Worker';
+                            $this->pid = getmypid();
 
-        // Deal with process from first fork
-        if($child_pid === -1){
-            // If pid is -1, it means fork doesn't work so just shut the program down.
-            die('Could not fork!');
+                            // A worker should not have any child worker and only should have one client socket.
+                            $this->workers = array();
 
-        }elseif($child_pid){
-            // Only father process will receive the PID of child process. 
-            // So this part defines what should father process(very beginning process) do after fork.
-            // What father process should do here is waiting child to end then kill itself.
-            pcntl_wait($children_status); 
-            //$this->libs['mc_log_mgr']->write_log('Father out!');
-            exit();
+                            $worker_thread_title = 'ctn_worker_'.$this->pid;
+                            setthreadtitle($worker_thread_title);
 
-        }else{
-            // This part is child process of first fork, we will fork it again then make grand child process runs as a daemond.
-            // But before that, we invoke posix_setsid() to detach all controlling terminals from child process.
-            posix_setsid();
+                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
 
-            // Even there are not much meaning, we still set pid attribute in cortana object in chlid process to the currect value.
-            $this->pid = getmypid();
+                            // Check if the job is allowed to execute
+                            $job = $this->authenticate_job($job);
+                            if(!$job['status']){
+                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title : ".$job['msg'], $job['msg_level']);
+                                $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
+                                exit();
+                            }
 
-            // Second fork
-            $grand_child_pid = pcntl_fork();
+                            $sleep = rand(3, 8);
+                            sleep($sleep);
 
-            //Deal with process form second fork
-            if($grand_child_pid === -1){
-                // Something goes wrong while forking, just die.
-                exit(1); 
-            }elseif($grand_child_pid){
-                // Child process part, just exit to make grand child process be adopted by init.
-                //$this->libs['mc_log_mgr']->write_log('Child out!');
-                exit(); 
-            }else{
-                // Daemond part
-                // We set pid attribute in cortana object in chlid process to the currect value.
-                $this->pid = getmypid();
+                            // Excuting Job
+                            $user = $job['payload']['user'];
+                            $passwd = $job['payload']['passwd'];
+                            $cmd = $job['payload']['cmd'];
+                            $dir = $job['payload']['dir'];
+                            $run_user = $job['payload']['run_user'];
+                            $log = array();
 
-                // Disable output and set signal handler
-                $this->set_daemond_env();
-                $this->set_signal_handler();
+                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user '$run_user'.");
 
-                $this->libs['mc_log_mgr']->write_log("Daemond start");
-
-                while(true){
-                    declare(ticks=1){
-                        if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
-                            $job = $this->libs['mc_queue_mgr']->get_msg();
-                            if($job['status']){
-                                $worker_pid = pcntl_fork();
-                                if($worker_pid === -1){
-                                }elseif(!$worker_pid){
-                                    // Worker part
-                                    $this->proc_type = 'Worker';
-                                    $this->pid = getmypid();
-
-                                    // A worker should not have any child worker and only should have one client socket.
-                                    $this->workers = array();
-
-                                    $worker_thread_title = 'ctn_worker_'.$this->pid;
-                                    setthreadtitle($worker_thread_title);
-
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
-
-                                    // Check if the job is allowed to execute
-                                    $job = $this->authenticate_job($job);
-                                    if(!$job['status']){
-                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title : ".$job['msg'], $job['msg_level']);
-                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
-                                        exit();
-                                    }
-
-                                    $sleep = rand(3, 8);
-                                    sleep($sleep);
-
-                                    // Excuting Job
-                                    $user = $job['payload']['user'];
-                                    $passwd = $job['payload']['passwd'];
-                                    $cmd = $job['payload']['cmd'];
-                                    $dir = $job['payload']['dir'];
-                                    $run_user = $job['payload']['run_user'];
-                                    $log = array();
-
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user '$run_user'.");
-
-                                    // Execute command
-                                    $output = array();
-                                    if($run_user == $user){
-                                        if($run_user == 'root'){
-                                            exec("cd $dir && $cmd 2>&1", $output, $exec_code);
-                                        }else{
-                                            exec("su -l $user -c 'cd $dir && $cmd' 2>&1", $output, $exec_code);
-                                        }
-                                    }else{
-                                        if($run_user == 'root'){
-                                            exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
-                                        }else{
-                                            exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
-                                        }
-                                    }
-                                    if($exec_code == 0){
-                                        if(count($output) > 0){
-                                            $output_msg = implode("\n", $output);
-                                            $log['msg'] = "$worker_thread_title executed the job sucessfully with following meaasge:\n$output_msg";
-                                            $log['level'] = "INFO";
-                                        }else{
-                                            $log['msg'] = "$worker_thread_title executed the job sucessfully with no meaasge.";
-                                            $log['level'] = "INFO";
-                                        }
-                                    }else{
-                                        if(count($output) > 0){
-                                            $output_msg = implode("\n", $output);
-                                            $log['msg'] = "$worker_thread_title executed the job abnormally with following meaasge:\n$output_msg";
-                                            $log['level'] = "WARNING";
-                                        }else{
-                                            $log['msg'] = "$worker_thread_title executed the job abnormally with no meaasge.";
-                                            $log['level'] = "WARNING";
-                                        }
-                                    }
-
-                                    $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
-                                    exit();
+                            // Execute command
+                            $output = array();
+                            if($run_user == $user){
+                                if($run_user == 'root'){
+                                    exec("cd $dir && $cmd 2>&1", $output, $exec_code);
                                 }else{
-                                    // Service daemond part
-                                    $this->workers[] = $worker_pid;
-                                    $job_cmd = explode(' ', $job['payload']['cmd']);
-                                    $this->libs['mc_log_mgr']->write_log("Create a worker(ctn_worker_$worker_pid) for ".basename($job_cmd[0]));
+                                    exec("su -l $user -c 'cd $dir && $cmd' 2>&1", $output, $exec_code);
                                 }
                             }else{
-                                // do something when get_msg fail.
-                                $this->libs['mc_log_mgr']->write_log("Can't get message from queue. ".$job['msg'], $job['msg_level']);
+                                if($run_user == 'root'){
+                                    exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
+                                }else{
+                                    exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
+                                }
                             }
-                        }
-                    }
-    
-                    $this->clear_uncaptured_zombies();
+                            if($exec_code == 0){
+                                if(count($output) > 0){
+                                    $output_msg = implode("\n", $output);
+                                    $log['msg'] = "$worker_thread_title executed the job sucessfully with following meaasge:\n$output_msg";
+                                    $log['level'] = "INFO";
+                                }else{
+                                    $log['msg'] = "$worker_thread_title executed the job sucessfully with no meaasge.";
+                                    $log['level'] = "INFO";
+                                }
+                            }else{
+                                if(count($output) > 0){
+                                    $output_msg = implode("\n", $output);
+                                    $log['msg'] = "$worker_thread_title executed the job abnormally with following meaasge:\n$output_msg";
+                                    $log['level'] = "WARNING";
+                                }else{
+                                    $log['msg'] = "$worker_thread_title executed the job abnormally with no meaasge.";
+                                    $log['level'] = "WARNING";
+                                }
+                            }
 
-                    usleep(200000);
+                            $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
+                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
+                            exit();
+                        }else{
+                            // Service daemon part
+                            $this->workers[] = $worker_pid;
+                            $job_cmd = explode(' ', $job['payload']['cmd']);
+                            $this->libs['mc_log_mgr']->write_log("Create a worker(ctn_worker_$worker_pid) for ".basename($job_cmd[0]));
+                        }
+                    }else{
+                        // do something when get_msg fail.
+                        $this->libs['mc_log_mgr']->write_log("Can't get message from queue. ".$job['msg'], $job['msg_level']);
+                    }
                 }
             }
-        }
-    }
-}
+
+            $this->clear_uncaptured_zombies();
+
+            usleep(200000);
+        } /* End of while loop */
+
+    } /* End of function */
+
+} /* End of class */
 
 $mc = new cortana($argv);
 $mc->execute();

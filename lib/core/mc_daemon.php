@@ -1,18 +1,18 @@
 <?php
-abstract class daemond {
+
+require(__DIR__.'/daemon.php');
+
+abstract class mc_daemon extends daemon {
 
     /***********************
      * Define data members *
      ***********************/
 
-    public $classname;
-    public $script_path;
     public $args;
     public $config;
     public $libs;
     public $workers = array();
-    public $proc_type = 'Daemond';
-    public $pid;
+    public $proc_type = 'Daemon';
 
 
 
@@ -25,22 +25,14 @@ abstract class daemond {
      * Return: void
      */
     public function __construct($cmd_args){
-        // Error report setting
-        error_reporting(E_ALL);
-
-        // Timezone setting
-        date_default_timezone_set("Asia/Taipei");
-        
-        $this->classname = get_class($this);
-        $this->script_path = dirname(__FILE__);
+        parent::__construct();
         $this->args = $this->prepare_args($cmd_args);
         $this->config = $this->prepare_config();
-        $this->init_libs();
-        $this->pid = getmypid();
+        $this->init_libs($this->proj_dir.'/lib/module');
     } 
 
     /*
-     * This method is destructor whic will execute when instance of this class is dead.
+     * This method is destructor whic will execute when instance of this class is destroyed.
      * Return: void
      */
     public function __destruct(){
@@ -54,7 +46,7 @@ abstract class daemond {
         $args = array();
 
         if(!in_array('-c', $cmd_args)){
-            $args['config'] = $this->script_path.'/config/'.$this->classname.'.ini';
+            $args['config'] = $this->proj_dir.'/config/'.$this->classname.'.ini';
         }else{
             $arg_key = array_search('-c', $cmd_args);
             $config_file = $cmd_args[$arg_key + 1];
@@ -81,7 +73,7 @@ abstract class daemond {
      * This method will load all needed php files and generate all needed objects then put them in a data member called libs.
      * Return: void
      */
-    public function init_libs($lib_dir='./lib'){
+    public function init_libs($lib_dir = './lib/module'){
         // Initial a empty array as a container for library objects
         $this->libs = array();
 
@@ -100,32 +92,10 @@ abstract class daemond {
     }
 
     /*
-     * This method will disable all standard output and set signal handlers.
-     * Return: void
+     *  This method will check if the request job is allowed to execute on local machine or not. 
+     *
+     *  Return: array
      */
-    public function set_daemond_env(){
-        // Change directory to daemond location.
-        chdir($this->script_path);        
-
-        // Because a daemond has no controlling terminal, it will raise some problems if daemond try to ouput something.
-        // Hence, we disable all output
-        fclose(STDIN);
-        fclose(STDOUT);
-        fclose(STDERR);
-        $STDIN = fopen('/dev/null', 'r');
-        $STDOUT = fopen('/dev/null', 'wb');
-        $STDERR = fopen('/dev/null', 'wb');
-    }
-
-    public function set_signal_handler(){
-        // Set signal handler
-        pcntl_signal(SIGTERM, array($this,'signal_handler'));
-        pcntl_signal(SIGHUP, array($this,'signal_handler'));
-        pcntl_signal(SIGINT, array($this,'signal_handler'));
-        pcntl_signal(SIGCHLD, array($this,'signal_handler'));
-        pcntl_signal(SIGUSR1, array($this,'signal_handler'));
-    }
-
     public function authenticate_job($job){
         $user = $job['payload']['user'];
         $passwd = $job['payload']['passwd'];
@@ -133,7 +103,7 @@ abstract class daemond {
         $cmd = $job['payload']['cmd'];
 
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
-        exec($this->script_path."/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
+        exec($this->proj_dir."/lib/module/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
         if($pass_auth == 0){
             if($user == $run_user){
                 $job['msg'] = 'Pass account authentication.';
@@ -152,16 +122,5 @@ abstract class daemond {
         return $job;
     }
 
-    /*
-     * This method definds the behavior of signal handler.
-     * Return: void
-     */
-    abstract public function signal_handler($signo);
-
-    /*
-     * This method definds the behavior of daemond.
-     * Return: void
-     */
-    abstract public function execute();
 }
 
