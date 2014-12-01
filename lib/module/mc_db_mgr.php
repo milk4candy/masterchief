@@ -54,6 +54,7 @@ class mc_db_mgr extends mc_basic_tool{
     }
 
     public function close_db(){
+        $this->pdo = null;
     }
 
     public function exec_sql($sql, $data){

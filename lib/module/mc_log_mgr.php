@@ -20,24 +20,25 @@ class mc_log_mgr extends mc_basic_tool{
     }
 
     public function write_log($msg, $level='INFO'){
+        if($this->config['basic']['log'] == 'on'){
         // Prepare log message
-        $msg = date('Y-m-d_H:i:s')." [$level] ".$msg;
+            $msg = date('Y-m-d_H:i:s')." [$level] ".$msg;
 
-        try{
-            // Write message into log file
-            if($level == 'INFO' or $level == 'NOTICE' or $level == 'DEBUG'){
-                // Make sure log directory exist
-                $this->create_dir(dirname($this->log));
-                file_put_contents($this->log, $msg."\n", FILE_APPEND|LOCK_EX);
-            }else{
-                $this->create_dir(dirname($this->errlog));
-                file_put_contents($this->errlog, $msg."\n", FILE_APPEND|LOCK_EX);
+            try{
+                // Write message into log file
+                if($level == 'INFO' or $level == 'NOTICE' or $level == 'DEBUG'){
+                    // Make sure log directory exist
+                    $this->create_dir(dirname($this->log));
+                    file_put_contents($this->log, $msg."\n", FILE_APPEND|LOCK_EX);
+                }else{
+                    $this->create_dir(dirname($this->errlog));
+                    file_put_contents($this->errlog, $msg."\n", FILE_APPEND|LOCK_EX);
+                }
+
+            }catch(Exception $e){
+                echo $e->getMessage();
             }
-
-        }catch(Exception $e){
-            echo $e->getMessage();
         }
-
     }
 
     public function logrotate($size=3, $rotate_num=4){

@@ -204,6 +204,9 @@ class masterchief extends mc_daemon{
      * Return: void
      */
     public function daemon_loop(){
+
+        $this->libs['mc_log_mgr']->write_log("Daemon start.");
+
         while(true){
             /*
              *  In PHP, we can use "declare" key word to declare "ticks" key word to a certain interger number to apply ticks mechanism on a peice of code area.
@@ -277,7 +280,16 @@ class masterchief extends mc_daemon{
                                     $worker_thread_title = 'mc_worker_'.$this->pid;
                                     setthreadtitle($worker_thread_title);
 
+                                    // Prepare variables
+                                    $user = $job['payload']['user'];
+                                    $passwd = $job['payload']['passwd'];
+                                    $cmd = $job['payload']['cmd'];
+                                    $dir = $job['payload']['dir'];
+                                    $run_user = $job['payload']['run_user'];
+                                    $log = array();
+
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
+                                    //$this->register_worker();
 
                                     // Check if the job is allowed to execute.
                                     $job = $this->authenticate_job($job);
@@ -289,12 +301,6 @@ class masterchief extends mc_daemon{
                                     }
 
                                     // Excuting Job
-                                    $user = $job['payload']['user'];
-                                    $passwd = $job['payload']['passwd'];
-                                    $cmd = $job['payload']['cmd'];
-                                    $dir = $job['payload']['dir'];
-                                    $run_user = $job['payload']['run_user'];
-                                    $log = array();
 
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user $run_user");
 
@@ -350,6 +356,7 @@ class masterchief extends mc_daemon{
                                     //Write log and reply client
                                     $this->libs['mc_socket_mgr']->reply_client($client_socket, $log['msg']);
                                     $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
+                                    //$this->report_worker_result();
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                     exit();
 

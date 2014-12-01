@@ -122,5 +122,17 @@ abstract class mc_daemon extends daemon {
         return $job;
     }
 
+    /*
+     *
+     */
+    public function register_worker(){
+    }
+
+    /*
+     *
+     */
+    public function report_worker_result(){
+    }
+
 }
 

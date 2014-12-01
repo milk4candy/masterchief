@@ -145,8 +145,7 @@ abstract class daemon {
                 // Disable output and set signal handler
                 $this->set_daemon_env();
 
-                $this->libs['mc_log_mgr']->write_log("Daemon start.");
-
+                // Run daemon loop
                 $this->daemon_loop();
 
             } /* End of second fork */

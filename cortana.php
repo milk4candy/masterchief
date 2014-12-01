@@ -126,6 +126,9 @@ class cortana extends mc_daemon{
      * Return: void
      */
     public function daemon_loop(){
+
+        $this->libs['mc_log_mgr']->write_log("Daemon start.");
+
         while(true){
             declare(ticks=1){
                 if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
