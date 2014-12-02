@@ -20,7 +20,7 @@ class mc_log_mgr extends mc_basic_tool{
     }
 
     public function write_log($msg, $level='INFO'){
-        if($this->config['basic']['log'] == 'on'){
+        if($this->config['basic']['log']){
         // Prepare log message
             $msg = date('Y-m-d_H:i:s')." [$level] ".$msg;
 

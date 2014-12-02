@@ -46,9 +46,20 @@ class masterchief extends mc_daemon{
                  *  In Unix, default behavior is to ignore such signal.
                  *  Here we capture this signal and reap exited child with pcntl_waitpid() to prevent zombie process.
                  */
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
                 if($finished_worker_pid > 0){
-                    $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) is sending exit signal. Reaping it...");
+                    if(pcntl_wifexited($status)){
+                        $exit_msg = "mc_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                        $exit_msg_level="INFO";
+                    }elseif(pcntl_wifstopped($status)){
+                        $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                        $exit_msg_level="WARN";
+                    }elseif(pcntl_wifsignaled($status)){
+                        $exit_msg = "mc_worker_$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                        $exit_msg_level="WARN";
+                    }
+                    $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+
                     // After a worker is finished, close socket between service daemon and client.
                     $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
@@ -56,31 +67,43 @@ class masterchief extends mc_daemon{
                     unset($this->workers[$finished_worker_pid]);
 
                     // Write log
-                    $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
+                    $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid is reaped.");
                 }
                 break;
             default:
                 // Before exit, Kill all workers first.
                 if(count($this->workers) > 0){
                     $this->libs['mc_log_mgr']->write_log('Killing all exist workers...');
-                    foreach($this->workers as $worker){
-                        posix_kill($worker, $signo);
+                    foreach($this->workers as $worker_pid => $client_socket_key){
+                        $this->libs['mc_log_mgr']->write_log("Killing worker(PID=$worker_pid)...");
+                        posix_kill($worker_pid, $signo);
                     }
                 }
 
                 // Wait for all workers exit
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
                 $reaping_time = time();
                 while(count($this->workers) > 0){
                     if($finished_worker_pid > 0){
-                        $this->libs['mc_log_mgr']->write_log("Reaping worker(PID=$finished_worker_pid)...");
+                        if(pcntl_wifexited($status)){
+                            $exit_msg = "mc_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                            $exit_msg_level="INFO";
+                        }elseif(pcntl_wifstopped($status)){
+                            $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                            $exit_msg_level="WARN";
+                        }elseif(pcntl_wifsignaled($status)){
+                            $exit_msg = "mc_worker_$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                            $exit_msg_level="WARN";
+                        }
+                        $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+
                         $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
                         // Remove finished worker from exist worker record.
                         unset($this->workers[$finished_worker_pid]);
 
                         // Write log
-                        $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) was reaped.");
+                        $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid was reaped.");
                         usleep(10000);
                     }
 
@@ -88,7 +111,7 @@ class masterchief extends mc_daemon{
                         $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
                     }
 
-                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
 
                     if(time() - $reaping_time > 10){
                         break;
@@ -116,9 +139,20 @@ class masterchief extends mc_daemon{
     public function clear_uncaptured_zombies(){
         // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
         // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
-        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
         while($finished_worker_pid > 0){
-            $this->libs['mc_log_mgr']->write_log("Found a finished worker(PID=$finished_worker_pid). Reaping it...");
+            if(pcntl_wifexited($status)){
+                $exit_msg = "mc_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                $exit_msg_level="INFO";
+            }elseif(pcntl_wifstopped($status)){
+                $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                $exit_msg_level="WARN";
+            }elseif(pcntl_wifsignaled($status)){
+                $exit_msg = "mc_worker_$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                $exit_msg_level="WARN";
+            }
+            $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+
             // After a worker is finished, close socket between service daemon and client.
             $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
 
@@ -126,9 +160,9 @@ class masterchief extends mc_daemon{
             unset($this->workers[$finished_worker_pid]);
 
             // Write log
-            $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
+            $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid is reaped.");
 
-            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
             usleep(100000);
         }
     }
@@ -187,6 +221,9 @@ class masterchief extends mc_daemon{
             $payload['sync'] = true;
         }elseif(!in_array('--sync', $input_array) and in_array('--async', $input_array)){
             $payload['sync'] = false;
+        }
+        if(in_array('-t', $input_array)){
+            $payload['timeout'] = $input_array[array_search('-t', $input_array)+1];
         }
 
         $job['status'] = $status;
@@ -268,7 +305,10 @@ class masterchief extends mc_daemon{
                                 if($worker_pid === -1){
                                     $this->libs['mc_log_mgr']->write_log("Fail to create a worker", "ERROR");
                                 }elseif(!$worker_pid){
+
                                     // Worker part
+
+
                                     $this->proc_type = 'Worker';
                                     $this->pid = getmypid();
 
@@ -279,14 +319,6 @@ class masterchief extends mc_daemon{
                                     // Change the thread title
                                     $worker_thread_title = 'mc_worker_'.$this->pid;
                                     setthreadtitle($worker_thread_title);
-
-                                    // Prepare variables
-                                    $user = $job['payload']['user'];
-                                    $passwd = $job['payload']['passwd'];
-                                    $cmd = $job['payload']['cmd'];
-                                    $dir = $job['payload']['dir'];
-                                    $run_user = $job['payload']['run_user'];
-                                    $log = array();
 
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                     //$this->register_worker();
@@ -301,8 +333,20 @@ class masterchief extends mc_daemon{
                                     }
 
                                     // Excuting Job
+                                    
+                                    // Prepare variables
+                                    $user = $job['payload']['user'];
+                                    $passwd = $job['payload']['passwd'];
+                                    $cmd = $job['payload']['cmd'];
+                                    $dir = $job['payload']['dir'];
+                                    $run_user = $job['payload']['run_user'];
+                                    $timeout = isset($job['payload']['timeout']) ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
+                                    $log = array();
 
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user $run_user");
+
+                                    // Set timeout
+                                    set_time_limit((int)$timeout);
 
                                     if($job['payload']['sync']){
                                         // Do the job now

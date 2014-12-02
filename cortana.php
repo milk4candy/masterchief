@@ -41,16 +41,26 @@ class cortana extends mc_daemon{
             case SIGUSR1:
                 break;
             case SIGCHLD:
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
                 if($finished_worker_pid > 0){
-                    $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) is sending exit signal. Reaping it...");
+                    if(pcntl_wifexited($status)){
+                        $exit_msg = "ctn_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                        $exit_msg_level = "INFO";
+                    }elseif(pcntl_wifstopped($status)){
+                        $exit_msg = "ctn_worker_$finished_worker_pid is stopped by signal:".pcntl_wstopsig($status).". Reaping it...";
+                        $exit_msg_level = "WARN";
+                    }elseif(pcntl_wifsignaled($status)){
+                        $exit_msg = "ctn_worker_$finished_worker_pid exited by signal:".pcntl_wtermsig($status).". Reaping it...";
+                        $exit_msg_level = "WARN";
+                    }
+                    $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
                     // Remove finished worker from exist worker record.
                     //unset($this->workers[$finished_worker_pid]);
                     unset($this->workers[array_search($finished_worker_pid, $this->workers)]);
 
                     // Write log
-                    $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
+                    $this->libs['mc_log_mgr']->write_log("ctn_worker_$finished_worker_pid is reaped.");
                 }
                 break;
             default:
@@ -63,18 +73,28 @@ class cortana extends mc_daemon{
                 }
 
                 // Wait for all workers exit
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
                 $reaping_time = time();
                 while(count($this->workers) > 0){
                     if($finished_worker_pid > 0){
-                        $this->libs['mc_log_mgr']->write_log("Reaping worker(PID=$finished_worker_pid)...");
+                        if(pcntl_wifexited($status)){
+                            $exit_msg = "ctn_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                            $exit_msg_level = "INFO";
+                        }elseif(pcntl_wifstopped($status)){
+                            $exit_msg = "ctn_worker_$finished_worker_pid is stopped by signal:".pcntl_wstopsig($status).". Reaping it...";
+                            $exit_msg_level = "WARN";
+                        }elseif(pcntl_wifsignaled($status)){
+                            $exit_msg = "ctn_worker_$finished_worker_pid exited by signal:".pcntl_wtermsig($status).". Reaping it...";
+                            $exit_msg_level = "WARN";
+                        }
+                        $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
                         // Remove finished worker from exist worker record.
                         //unset($this->workers[$finished_worker_pid]);
                         unset($this->workers[array_search($finished_worker_pid, $this->workers)]);
 
                         // Write log
-                        $this->libs['mc_log_mgr']->write_log("Worker(PID=$finished_worker_pid) was reaped.");
+                        $this->libs['mc_log_mgr']->write_log("ctn_worker_$finished_worker_pid was reaped.");
                         usleep(10000);
                     }
 
@@ -82,7 +102,7 @@ class cortana extends mc_daemon{
                         $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
                     }
 
-                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
 
                     if(time() - $reaping_time > 10){
                         break;
@@ -101,20 +121,29 @@ class cortana extends mc_daemon{
     public function clear_uncaptured_zombies(){
         // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
         // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
-        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
         while($finished_worker_pid > 0){
-            $this->libs['mc_log_mgr']->write_log("Found a finished worker(PID=$finished_worker_pid). Reaping it...");
+            if(pcntl_wifexited($status)){
+                $exit_msg = "ctn_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                $exit_msg_level = "INFO";
+            }elseif(pcntl_wifstopped($status)){
+                $exit_msg = "ctn_worker_$finished_worker_pid is stopped by signal:".pcntl_wstopsig($status).". Reaping it...";
+                $exit_msg_level = "WARN";
+            }elseif(pcntl_wifsignaled($status)){
+                $exit_msg = "ctn_worker_$finished_worker_pid exited by signal:".pcntl_wtermsig($status).". Reaping it...";
+                $exit_msg_level = "WARN";
+            }
+            $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
             // Remove finished worker from exist worker record.
             if($finished_worker_key = array_search($finished_worker_pid, $this->worker)){
-                //unset($this->workers[$finished_worker_key]);
                 unset($this->workers[array_search($finished_worker_pid, $this->workers)]);
             }
 
             // Write log
             $this->libs['mc_log_mgr']->write_log("Finished worker(PID=$finished_worker_pid) is Reaped.");
 
-            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG);
+            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
             usleep(100000);
         }
     }
@@ -161,16 +190,25 @@ class cortana extends mc_daemon{
                             sleep($sleep);
 
                             // Excuting Job
+
+                            // Prepare variables
                             $user = $job['payload']['user'];
                             $passwd = $job['payload']['passwd'];
                             $cmd = $job['payload']['cmd'];
                             $dir = $job['payload']['dir'];
                             $run_user = $job['payload']['run_user'];
+                            $timeout = isset($job['payload']['timeout']) ? $job['payload']['timeout'] : $this->config['basic']['timeout'];
                             $log = array();
 
                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user '$run_user'.");
 
+                            //
+
                             // Execute command
+
+                            // Set timeout
+                            set_time_limit((int)$timeout);
+
                             $output = array();
                             if($run_user == $user){
                                 if($run_user == 'root'){
