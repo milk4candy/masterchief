@@ -12,6 +12,7 @@ abstract class mc_daemon extends daemon {
     public $config;
     public $libs;
     public $workers = array();
+    public $timeout = array();
     public $proc_type = 'Daemon';
 
 
@@ -26,9 +27,12 @@ abstract class mc_daemon extends daemon {
      */
     public function __construct($cmd_args){
         parent::__construct();
+        umask(0);
+        $this->worker_pid_dir = $this->proj_dir."/pid/".$this->classname."/worker";
         $this->args = $this->prepare_args($cmd_args);
         $this->config = $this->prepare_config();
         $this->init_libs($this->proj_dir.'/lib/module');
+        $this->create_worker_pid_dir();
     } 
 
     /*
@@ -101,6 +105,7 @@ abstract class mc_daemon extends daemon {
         $passwd = $job['payload']['passwd'];
         $run_user = $job['payload']['run_user'];
         $cmd = $job['payload']['cmd'];
+        $dir = $job['payload']['dir'];
 
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
         exec($this->proj_dir."/lib/module/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
@@ -109,7 +114,7 @@ abstract class mc_daemon extends daemon {
                 $job['msg'] = 'Pass account authentication.';
                 $job['msg_level'] = 'INFO';
             }else{
-                $sudo_check = $this->libs['sudo_checker']->do_check($user, $run_user, $cmd);
+                $sudo_check = $this->libs['sudo_checker']->do_check($user, $run_user, $cmd, $dir);
                 $job['status'] = $sudo_check['status'];
                 $job['msg'] = $sudo_check['msg'];
                 $job['msg_level'] = $sudo_check['msg_level'];
@@ -120,6 +125,34 @@ abstract class mc_daemon extends daemon {
             $job['msg_level'] = "WARNING";
         }
         return $job;
+    }
+
+    public function clear_timeout_worker(){
+        foreach($this->timeout as $worker_pid => $timeout_info){
+            if(time() - $timeout_info['start_time'] > $timeout_info['timeout']){
+               $this->kill_worker_by_pid($worker_pid, SIGTERM);
+            }
+        }
+        
+    }
+
+    public function kill_worker_by_pid($worker_pid, $signo){
+        $pid_file = $this->worker_pid_dir."/".$worker_pid;
+        $this->libs['mc_log_mgr']->write_log("Killing worker(PID=$worker_pid)...");
+        posix_kill($worker_pid, $signo);
+        if(file_exists($pid_file)){
+            exec("ps --ppid `cat $pid_file` -o pid --no-heading|xargs kill -9", $job_kill_output, $job_kill_exec_code);
+        }
+        return;
+    }
+
+    public function create_worker_pid_dir(){
+        try{
+            $this->libs['mc_log_mgr']->create_dir($this->worker_pid_dir, 0777);
+        }catch(Exception $e){
+            echo $e->getMessage();
+            exit(1);
+        }
     }
 
     /*

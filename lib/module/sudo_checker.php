@@ -10,7 +10,7 @@ class sudo_checker{
      *
      *  return: array
      */ 
-    public function do_check($user, $as_user, $cmd){
+    public function do_check($user, $as_user, $cmd, $dir){
         $pass_all_rules = false;
         $sudo_info = $this->get_sudo_info($user);
         if($sudo_info['status']){
@@ -18,9 +18,9 @@ class sudo_checker{
                 $sudo_rules = $this->get_sudo_rules($sudo_info);
                 foreach($sudo_rules as $rule){
                     if(in_array($as_user, $rule['user']) or in_array('ALL', $rule['user'])){
-                        if($this->check_cmd_privilege($cmd, $rule['cmd']) == 'allow'){
+                        if($this->check_cmd_privilege($cmd, $dir, $rule['cmd']) == 'allow'){
                             $pass_all_rules = true;
-                        }elseif($this->check_cmd_privilege($cmd, $rule['cmd']) == 'deny'){
+                        }elseif($this->check_cmd_privilege($cmd, $dir, $rule['cmd']) == 'deny'){
                             $pass_all_rules = false;
                             break;
                         }
@@ -126,13 +126,18 @@ class sudo_checker{
      *
      *  return: string
      */
-    private function check_cmd_privilege($cmd, $cmd_rule){
+    private function check_cmd_privilege($cmd, $dir, $cmd_rule){
 
         $pass_this_rule = 'neutral';
         $cmd_seg = explode(' ', $cmd);
         $cmd_wo_arg = $cmd_seg[0];
 
-        exec("readlink -f `which $cmd_wo_arg`", $output, $exec_code);
+        exec("cd $dir && readlink -f `which $cmd_wo_arg`", $output, $exec_code);
+
+        if($exec_code !=0){
+            return 'deny';
+        }
+
         $cmd_fullpath = $output[0];
 
         $deny_cmds = $cmd_rule['deny'];

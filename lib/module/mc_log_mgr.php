@@ -37,6 +37,7 @@ class mc_log_mgr extends mc_basic_tool{
 
             }catch(Exception $e){
                 echo $e->getMessage();
+                exit(1);
             }
         }
     }
