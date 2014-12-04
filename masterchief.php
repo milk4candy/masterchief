@@ -49,7 +49,7 @@ class masterchief extends mc_daemon{
                 $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
                 if($finished_worker_pid > 0){
                     if(pcntl_wifexited($status)){
-                        $exit_msg = "mc_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                        $exit_msg = "mc_worker_$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
                         $exit_msg_level="INFO";
                     }elseif(pcntl_wifstopped($status)){
                         $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
@@ -61,16 +61,17 @@ class masterchief extends mc_daemon{
                     $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
                     // After a worker is finished, close socket between service daemon and client.
-                    $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
+                    $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]['socket_key']);
 
                     // Remove finished worker from exist worker record.
-                    unset($this->workers[$finished_worker_pid]);
+                    if(isset($this->workers[$finished_worker_pid])){
+                        unset($this->workers[$finished_worker_pid]);
+                    }
 
                     // Remove pid file of finished worker.
-                    unlink($this->worker_pid_dir."/".$finished_worker_pid);
-
-                    // Remove from timeout check record
-                    unset($this->timeout[$finished_worker_pid]);
+                    if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
+                        unlink($this->worker_pid_dir."/".$finished_worker_pid);
+                    }
 
                     // Write log
                     $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid is reaped.");
@@ -80,13 +81,14 @@ class masterchief extends mc_daemon{
                 // Before exit, Kill all workers first.
                 if(count($this->workers) > 0){
                     $this->libs['mc_log_mgr']->write_log('Killing all exist workers...');
-                    foreach($this->workers as $worker_pid => $client_socket_key){
-                        $this->kill_worker_by_pid($worker_pid, $singo);
+                    foreach($this->workers as $worker_pid => $worker_info){
+                        $this->libs['mc_log_mgr']->write_log("Killing mc_worker_worker_$worker_pid");
+                        $this->kill_worker_by_pid($worker_pid, $signo);
                     }
                 }
 
                 // Wait for all workers exit
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
                 $reaping_time = time();
                 while(count($this->workers) > 0){
                     if($finished_worker_pid > 0){
@@ -102,14 +104,17 @@ class masterchief extends mc_daemon{
                         }
                         $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
-                        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
+                        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]['socket_key']);
 
-                        // Remove finished worker from exist worker record and its pid file.
-                        unset($this->workers[$finished_worker_pid]);
-                        unlink($this->worker_pid_dir."/".$finished_worker_pid);
+                        // Remove finished worker from exist worker record.
+                        if(isset($this->workers[$finished_worker_pid])){
+                            unset($this->workers[$finished_worker_pid]);
+                        }
 
-                        // Remove from timeout check record
-                        unset($this->timeout[$finished_worker_pid]);
+                        // Remove pid file of finished worker.
+                        if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
+                            unlink($this->worker_pid_dir."/".$finished_worker_pid);
+                        }
 
                         // Write log
                         $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid was reaped.");
@@ -120,7 +125,7 @@ class masterchief extends mc_daemon{
                         $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
                     }
 
-                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
+                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
 
                     if(time() - $reaping_time > 10){
                         break;
@@ -128,11 +133,13 @@ class masterchief extends mc_daemon{
                 }
 
                 if($this->proc_type == 'Worker'){
-                    $terminate_msg = "Worker(PID=".$this->pid.") terminated before finished.";
+                    $terminate_msg = "mc_worker_".$this->pid." terminated before finished.";
                     $this->libs['mc_socket_mgr']->reply_client($this->libs['mc_socket_mgr']->client_sockets[0], $terminate_msg);
+                    $this->libs['mc_socket_mgr']->close_client_sockets();
                     $this->libs['mc_log_mgr']->write_log($terminate_msg, "WARN");
                     exit(1);
                 }else{
+                    $this->libs['mc_socket_mgr']->close_client_sockets();
                     $this->libs['mc_log_mgr']->write_log($this->proc_type.'('.$this->pid.') stop!');
                 }
                 exit();
@@ -155,7 +162,7 @@ class masterchief extends mc_daemon{
     public function clear_uncaptured_zombies(){
         // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
         // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
-        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
+        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
         while($finished_worker_pid > 0){
             if(pcntl_wifexited($status)){
                 $exit_msg = "mc_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
@@ -170,15 +177,22 @@ class masterchief extends mc_daemon{
             $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
             // After a worker is finished, close socket between service daemon and client.
-            $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]);
+            $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]['socket_key']);
 
             // Remove finished worker from exist worker record.
-            unset($this->workers[$finished_worker_pid]);
+            if(isset($this->workers[$finished_worker_pid])){
+                unset($this->workers[$finished_worker_pid]);
+            }
+
+            // Remove pid file of finished worker.
+            if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
+                unlink($this->worker_pid_dir."/".$finished_worker_pid);
+            }
 
             // Write log
             $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid is reaped.");
 
-            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
+            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
             usleep(100000);
         }
     }
@@ -294,7 +308,7 @@ class masterchief extends mc_daemon{
                             if(count($this->libs['mc_socket_mgr']->client_sockets) < $this->config['socket']['maxconn']){
                                 // If not, store the client socket then go back to listen
                                 $this->libs['mc_socket_mgr']->add_client_socket($client_socket);
-                                //continue;
+                                continue;
                             }else{
                                 // Too many socket connections, reject new socket!
                                 $reject_msg = 'Server is busy, please try later.';
@@ -332,8 +346,9 @@ class masterchief extends mc_daemon{
                                     $this->proc_type = 'Worker';
                                     $this->pid = getmypid();
 
-                                    // A worker should not have any child worker and only should have one client socket.
+                                    // A worker should not have any child worker and service(listening) socket and only should have one client socket.
                                     $this->workers = array();
+                                    $this->libs['mc_socket_mgr']->service_sockets = array();
                                     $this->libs['mc_socket_mgr']->client_sockets = array($client_socket);
 
                                     // Change the thread title
@@ -380,12 +395,14 @@ class masterchief extends mc_daemon{
                                                 exec("su -l $user -c 'echo $$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd' 2>&1", $output, $exec_code);
                                             }
                                         }else{
+                                            $cmd = str_replace('"', '\"', $cmd);
+                                            $cmd = str_replace("'", "\'", $cmd);
                                             if($run_user == 'root'){
                                                 //exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
-                                                exec("su -l $user -c 'echo $$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
+                                                exec("su -l $user -c 'echo $passwd|sudo -S bash -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
                                             }else{
                                                 //exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
-                                                exec("su -l $user -c 'echo $$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
+                                                exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && $cmd\"' 2>&1", $output, $exec_code);
                                             }
                                         }
                                         if($exec_code == 0){
@@ -421,6 +438,7 @@ class masterchief extends mc_daemon{
 
                                     //Write log and reply client
                                     $this->libs['mc_socket_mgr']->reply_client($client_socket, $log['msg']);
+                                    $this->libs['mc_socket_mgr']->close_client_sockets();
                                     $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
                                     //$this->report_worker_result();
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
@@ -428,11 +446,9 @@ class masterchief extends mc_daemon{
 
                                 }else{
                                     // Service daemon part
-                                    // Put new worker and its socket in to a mapping array for future management. 
-                                    $this->workers[$worker_pid] = $client_socket_key;
 
-                                    // Prepare info for timeout check
-                                    $this->timeout[$worker_pid] = array('start_time' => time(), 'timeout' => $job['payload']['timeout']);
+                                    // Put new worker and its related info in to a mapping array for future management. 
+                                    $this->workers[$worker_pid] = array('socket_key' => $client_socket_key, 'start_time' => time(), 'timeout' => $job['payload']['timeout']);
 
                                     // write log
                                     $job_cmd = explode(' ', $job['payload']['cmd']);
@@ -447,12 +463,13 @@ class masterchief extends mc_daemon{
 
             $this->clear_timeout_worker();
 
+            // Let Daemon rest 0.2 seconds.
+            usleep(200000);
+
             // Basically, the callback function we set for SIGCHLD signal will reap every exited child worker process.
             // But here we scan again just in case we miss any SIGCHLD signal.
             $this->clear_uncaptured_zombies();
 
-            // Let Daemon rest 0.2 seconds.
-            usleep(200000);
         } /* End of while loop */
 
     } /* End of function */
