@@ -12,7 +12,6 @@ abstract class mc_daemon extends daemon {
     public $config;
     public $libs;
     public $workers = array();
-    public $timeout = array();
     public $proc_type = 'Daemon';
 
 
@@ -128,9 +127,15 @@ abstract class mc_daemon extends daemon {
     }
 
     public function clear_timeout_worker(){
-        foreach($this->timeout as $worker_pid => $timeout_info){
-            if(time() - $timeout_info['start_time'] > $timeout_info['timeout']){
-               $this->kill_worker_by_pid($worker_pid, SIGTERM);
+        foreach($this->workers as $worker_pid => $info){
+            if(time() - $info['start_time'] > $info['timeout']){
+                if($this->classname == "masterchief"){
+                    $msg = "mc_worker_$worker_pid reach timeout limit. Terminate it ....";
+                }elseif($this->classname == 'cortana'){
+                    $msg = "ctn_worker_$worker_pid reach timeout limit. Terminate it ....";
+                }
+                $this->libs['mc_log_mgr']->write_log($msg);
+                $this->kill_worker_by_pid($worker_pid, SIGTERM);
             }
         }
         
@@ -138,7 +143,6 @@ abstract class mc_daemon extends daemon {
 
     public function kill_worker_by_pid($worker_pid, $signo){
         $pid_file = $this->worker_pid_dir."/".$worker_pid;
-        $this->libs['mc_log_mgr']->write_log("Killing worker(PID=$worker_pid)...");
         posix_kill($worker_pid, $signo);
         if(file_exists($pid_file)){
             exec("ps --ppid `cat $pid_file` -o pid --no-heading|xargs kill -9", $job_kill_output, $job_kill_exec_code);

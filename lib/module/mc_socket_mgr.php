@@ -24,6 +24,11 @@ class mc_socket_mgr extends mc_basic_tool{
         $this->service_socket = $socket;
     }
 
+    public function close_client_socket($client_socket_key){
+        socket_close($this->client_sockets[$client_socket_key]);
+        unset($this->client_sockets[$client_socket_key]);
+    }
+
     public function close_service_socket(){
         if($this->service_socket != null){
             socket_close($this->service_socket);
@@ -66,9 +71,5 @@ class mc_socket_mgr extends mc_basic_tool{
         socket_write($client_socket, $msg, strlen($msg));
     }
 
-    public function close_client_socket($client_socket_key){
-        socket_close($this->client_sockets[$client_socket_key]);
-        unset($this->client_sockets[$client_socket_key]);
-    }
 
 }
