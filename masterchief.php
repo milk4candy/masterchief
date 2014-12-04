@@ -402,7 +402,7 @@ class masterchief extends mc_daemon{
                                                 exec("su -l $user -c 'echo $passwd|sudo -S bash -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
                                             }else{
                                                 //exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
-                                                exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && $cmd\"' 2>&1", $output, $exec_code);
+                                                exec("su -l $user -c 'echo $passwd|sudo -S -u $run_user bash -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
                                             }
                                         }
                                         if($exec_code == 0){
