@@ -95,6 +95,179 @@ abstract class mc_daemon extends daemon {
     }
 
     /*
+     * This method definds the behavior of signal handler.
+     * Return: void
+     */
+    public function signal_handler($signo){
+
+        switch($this->classname){
+            case "masterchief":
+                $worker_prefix = 'mc_worker_';
+                break;
+            case "cortana":
+                $worker_prefix = 'ctn_worker_';
+                break;
+            default:
+                $worker_prefix = 'worker_';
+        }
+    
+        switch($signo){
+            case SIGUSR1:
+                break;
+            case SIGCHLD:
+                /*
+                 *  When child process exits, it will send a SIGCHLD signal to parent process.
+                 *  In Unix, default behavior is to ignore such signal.
+                 *  Here we capture this signal and reap exited child with pcntl_waitpid() to prevent zombie process.
+                 */
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
+                if($finished_worker_pid > 0){
+                    if(pcntl_wifexited($status)){
+                        $exit_msg = $worker_prefix."$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                        $exit_msg_level="INFO";
+                    }elseif(pcntl_wifstopped($status)){
+                        $exit_msg = $worker_prefix."$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                        $exit_msg_level="WARN";
+                    }elseif(pcntl_wifsignaled($status)){
+                        $exit_msg = $worker_prefix."$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                        $exit_msg_level="WARN";
+                    }
+                    $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+
+                    $this->daemon_behavior_when_worker_exit($finished_worker_pid);
+
+                    // Write log
+                    $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid was reaped.");
+                }
+                break;
+            default:
+                // Before exit, Kill all workers first.
+                if(count($this->workers) > 0){
+                    $this->libs['mc_log_mgr']->write_log('Daemon is about to stop. Killing all exist workers...');
+                    foreach($this->workers as $worker_pid => $worker_info){
+                        $this->libs['mc_log_mgr']->write_log("Killing $worker_prefix"."$worker_pid...");
+                        $this->kill_worker_by_pid($worker_pid, $signo);
+                    }
+                }
+
+                // Wait for all workers exit
+                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
+                $reaping_time = time();
+                while(count($this->workers) > 0){
+                    if($finished_worker_pid > 0){
+                        if(pcntl_wifexited($status)){
+                            $exit_msg = $worker_prefix."$finished_worker_pid termiated with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                            $exit_msg_level="INFO";
+                        }elseif(pcntl_wifstopped($status)){
+                            $exit_msg = $worker_prefix."$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                            $exit_msg_level="WARN";
+                        }elseif(pcntl_wifsignaled($status)){
+                            $exit_msg = $worker_prefix."$finished_worker_pid terminated by singal:".pcntl_wtermsig($status).". Reaping it...";
+                            $exit_msg_level="WARN";
+                        }
+                        $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+
+                        $this->daemon_behavior_when_worker_terminate($finished_worker_pid);
+
+                        // Write log
+                        $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid was reaped");
+                    }
+
+                    if(count($this->workers) == 0){
+                        $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
+                        break;
+                    }
+                    
+                    if(time() - $reaping_time > 10){
+                        break;
+                    }
+
+                    usleep(10000);
+
+                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
+
+                }
+
+                if($this->proc_type == 'Worker'){
+                    $terminate_msg = $worker_prefix.$this->pid." terminated before finished.";
+                    $this->worker_behavior_when_worker_terminate($terminate_msg);
+                    exit(1);
+                }else{
+                    $this->daemon_behavior_when_daemon_terminate();
+                    exit();
+                }
+        }
+    }
+
+    /*
+     *  This method is used to reap any exist zombie child process.
+     *  Return: void
+     */
+    public function clear_uncaptured_zombies(){
+
+        switch($this->classname){
+            case "masterchief":
+                $worker_prefix = 'mc_worker_';
+                break;
+            case "cortana":
+                $worker_prefix = 'ctn_worker_';
+                break;
+            default:
+                $worker_prefix = 'worker_';
+        }
+    
+        // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
+        // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
+        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
+        while($finished_worker_pid > 0){
+            if(pcntl_wifexited($status)){
+                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                $exit_msg_level="INFO";
+            }elseif(pcntl_wifstopped($status)){
+                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                $exit_msg_level="WARN";
+            }elseif(pcntl_wifsignaled($status)){
+                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                $exit_msg_level="WARN";
+            }
+            $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+
+            $this->daemon_behavior_when_worker_exit($finished_worker_pid);
+            
+            $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid was reaped.");
+
+            usleep(100000);
+
+            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
+        }
+    }
+
+    public function daemon_behavior_when_worker_exit($exit_worker_pid){
+        // Remove finished worker from exist worker record.
+        if(isset($this->workers[$exit_worker_pid])){
+            unset($this->workers[$exit_worker_pid]);
+        }
+
+        // Remove pid file of finished worker.
+        if(file_exists($this->worker_pid_dir."/".$exit_worker_pid)){
+            unlink($this->worker_pid_dir."/".$exit_worker_pid);
+        }
+    }
+
+    public function daemon_behavior_when_worker_terminate($terminate_worker_pid){
+        $this->daemon_behavior_when_worker_exit($terminate_worker_pid);
+    }
+
+    public function worker_behavior_when_worker_terminate($terminate_msg){
+        $this->libs['mc_log_mgr']->write_log($terminate_msg, "WARN");
+    }
+
+    public function daemon_behavior_when_daemon_terminate(){
+        $this->libs['mc_log_mgr']->write_log($this->proc_type." ".$this->classname."(PID=".$this->pid.") stop!");
+    }
+
+
+    /*
      *  This method will check if the request job is allowed to execute on local machine or not. 
      *
      *  Return: array

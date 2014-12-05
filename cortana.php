@@ -33,146 +33,6 @@ class cortana extends mc_daemon{
     }
 
     /*
-     * This method definds the behavior of signal handler.
-     * Return: void
-     */
-    public function signal_handler($signo){
-        switch($signo){
-            case SIGUSR1:
-                break;
-            case SIGCHLD:
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-                if($finished_worker_pid > 0){
-                    if(pcntl_wifexited($status)){
-                        $exit_msg = "ctn_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
-                        $exit_msg_level = "INFO";
-                    }elseif(pcntl_wifstopped($status)){
-                        $exit_msg = "ctn_worker_$finished_worker_pid is stopped by signal:".pcntl_wstopsig($status).". Reaping it...";
-                        $exit_msg_level = "WARN";
-                    }elseif(pcntl_wifsignaled($status)){
-                        $exit_msg = "ctn_worker_$finished_worker_pid exited by signal:".pcntl_wtermsig($status).". Reaping it...";
-                        $exit_msg_level = "WARN";
-                    }
-                    $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
-
-                    // Remove finished worker from exist worker record.
-                    if(isset($this->workers[$finished_worker_pid])){
-                        unset($this->workers[$finished_worker_pid]);
-                    }
-
-                    // Remove pid file of finished worker
-                    if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
-                        unlink($this->worker_pid_dir."/".$finished_worker_pid);
-                    }
-
-                    // Write log
-                    $this->libs['mc_log_mgr']->write_log("ctn_worker_$finished_worker_pid is reaped.");
-                }
-                break;
-            default:
-                // Kill all workers
-                if(count($this->workers) > 0){
-                    $this->libs['mc_log_mgr']->write_log('Killing all exist workers...');
-                    foreach($this->workers as $worker_pid => $worker_info){
-                        $this->libs['mc_log_mgr']->write_log("Killing ctn_worker_$worker_pid)");
-                        $this->kill_worker_by_pid($worker_pid, $signo);
-                    }
-                }
-
-                // Wait for all workers exit
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-                $reaping_time = time();
-                while(count($this->workers) > 0){
-                    if($finished_worker_pid > 0){
-                        if(pcntl_wifexited($status)){
-                            $exit_msg = "ctn_worker_$finished_worker_pid terminated with exit code:".pcntl_wexitstatus($status).". Reaping it...";
-                            $exit_msg_level = "INFO";
-                        }elseif(pcntl_wifstopped($status)){
-                            $exit_msg = "ctn_worker_$finished_worker_pid is stopped by signal:".pcntl_wstopsig($status).". Reaping it...";
-                            $exit_msg_level = "WARN";
-                        }elseif(pcntl_wifsignaled($status)){
-                            $exit_msg = "ctn_worker_$finished_worker_pid terminated by signal:".pcntl_wtermsig($status).". Reaping it...";
-                            $exit_msg_level = "WARN";
-                        }
-                        $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
-
-                        // Remove finished worker from exist worker record.
-                        if(isset($this->workers[$finished_worker_pid])){
-                            unset($this->workers[$finished_worker_pid]);
-                        }
-
-                        // Remove pid file of finished worker
-                        if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
-                            unlink($this->worker_pid_dir."/".$finished_worker_pid);
-                        }
-
-                        // Write log
-                        $this->libs['mc_log_mgr']->write_log("ctn_worker_$finished_worker_pid was reaped.");
-                        usleep(10000);
-                    }
-
-                    if(count($this->workers) == 0){
-                        $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
-                    }
-
-                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-
-                    if(time() - $reaping_time > 10){
-                        break;
-                    }
-                }
-
-                if($this->proc_type == "Worker"){
-                    $terminate_msg = "ctn_worker_".$this->pid." terminated before finish.";
-                    $this->libs['mc_log_mgr']->write_log($terminate_msg, "WARN");
-                    exit(1);
-                }else{
-                    $this->libs['mc_log_mgr']->write_log($this->proc_type.'('.$this->pid.') stop!');
-                }
-
-                exit();
-        }
-    }
-
-    /*
-     *  This method is used to reap any exist zombie child process.
-     *  Return: void
-     */
-    public function clear_uncaptured_zombies(){
-        // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
-        // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
-        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-        while($finished_worker_pid > 0){
-            if(pcntl_wifexited($status)){
-                $exit_msg = "ctn_worker_$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
-                $exit_msg_level = "INFO";
-            }elseif(pcntl_wifstopped($status)){
-                $exit_msg = "ctn_worker_$finished_worker_pid is stopped by signal:".pcntl_wstopsig($status).". Reaping it...";
-                $exit_msg_level = "WARN";
-            }elseif(pcntl_wifsignaled($status)){
-                $exit_msg = "ctn_worker_$finished_worker_pid exited by signal:".pcntl_wtermsig($status).". Reaping it...";
-                $exit_msg_level = "WARN";
-            }
-            $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
-
-            // Remove finished worker from exist worker record.
-            if(isset($this->worker[$finished_worker_pid])){
-                unset($this->workers[$finished_worker_pid]);
-            }
-
-            if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
-                unlink($this->worker_pid_dir."/".$finished_worker_pid);
-            }
-
-            // Write log
-            $this->libs['mc_log_mgr']->write_log("Finished ctn_worker_$finished_worker_pid is Reaped.");
-
-            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-            usleep(100000);
-        }
-    }
-
-    /*
      * This method will run an infinity loop to listen a queue for incoming job request.
      * Onec it receive a job request, it will fork a child worker process to execute the job.
      * It will also write logs to local files and database.
@@ -225,7 +85,7 @@ class cortana extends mc_daemon{
                             $timeout = isset($job['payload']['timeout']) ? $job['payload']['timeout'] : $this->config['basic']['timeout'];
                             $log = array();
 
-                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user '$run_user'.");
+                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing '$cmd' under directory '$dir' by user '$user' as user '$run_user'.");
 
 
                             // Execute command
@@ -287,9 +147,9 @@ class cortana extends mc_daemon{
 
             $this->clear_timeout_worker();
 
-            usleep(200000);
-
             $this->clear_uncaptured_zombies();
+
+            usleep(200000);
 
         } /* End of while loop */
 

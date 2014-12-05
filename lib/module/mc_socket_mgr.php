@@ -32,12 +32,14 @@ class mc_socket_mgr extends mc_basic_tool{
     public function close_service_socket(){
         if($this->service_socket != null){
             socket_close($this->service_socket);
+            $this->service_socket = null;
         }
     }
 
     public function close_client_sockets(){
-        foreach($this->client_sockets as $client_socket){
+        foreach($this->client_sockets as $client_socket_key => $client_socket){
             socket_close($client_socket);
+            unset($this->client_sockets[$client_socket_key]);
         }
     }
 
@@ -61,11 +63,13 @@ class mc_socket_mgr extends mc_basic_tool{
         array_push($this->client_sockets, $client_socket);
     }
 
+    /*
     public function del_client_socket($socket_key){
         socket_shutdown($this->client_sockets[$socket_key]);
         socket_close($this->client_sockets[$socket_key]);
         unset($this->client_sockets[$socket_key]);
     }
+     */
 
     public function reply_client($client_socket, $msg){
         socket_write($client_socket, $msg, strlen($msg));

@@ -33,120 +33,6 @@ class masterchief extends mc_daemon{
     }
 
     /*
-     * This method definds the behavior of signal handler.
-     * Return: void
-     */
-    public function signal_handler($signo){
-        switch($signo){
-            case SIGUSR1:
-                break;
-            case SIGCHLD:
-                /*
-                 *  When child process exits, it will send a SIGCHLD signal to parent process.
-                 *  In Unix, default behavior is to ignore such signal.
-                 *  Here we capture this signal and reap exited child with pcntl_waitpid() to prevent zombie process.
-                 */
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
-                if($finished_worker_pid > 0){
-                    if(pcntl_wifexited($status)){
-                        $exit_msg = "mc_worker_$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
-                        $exit_msg_level="INFO";
-                    }elseif(pcntl_wifstopped($status)){
-                        $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
-                        $exit_msg_level="WARN";
-                    }elseif(pcntl_wifsignaled($status)){
-                        $exit_msg = "mc_worker_$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
-                        $exit_msg_level="WARN";
-                    }
-                    $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
-
-                    // After a worker is finished, close socket between service daemon and client.
-                    $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]['socket_key']);
-
-                    // Remove finished worker from exist worker record.
-                    if(isset($this->workers[$finished_worker_pid])){
-                        unset($this->workers[$finished_worker_pid]);
-                    }
-
-                    // Remove pid file of finished worker.
-                    if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
-                        unlink($this->worker_pid_dir."/".$finished_worker_pid);
-                    }
-
-                    // Write log
-                    $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid is reaped.");
-                }
-                break;
-            default:
-                // Before exit, Kill all workers first.
-                if(count($this->workers) > 0){
-                    $this->libs['mc_log_mgr']->write_log('Killing all exist workers...');
-                    foreach($this->workers as $worker_pid => $worker_info){
-                        $this->libs['mc_log_mgr']->write_log("Killing mc_worker_worker_$worker_pid");
-                        $this->kill_worker_by_pid($worker_pid, $signo);
-                    }
-                }
-
-                // Wait for all workers exit
-                $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-                $reaping_time = time();
-                while(count($this->workers) > 0){
-                    if($finished_worker_pid > 0){
-                        if(pcntl_wifexited($status)){
-                            $exit_msg = "mc_worker_$finished_worker_pid termiated with exit code:".pcntl_wexitstatus($status).". Reaping it...";
-                            $exit_msg_level="INFO";
-                        }elseif(pcntl_wifstopped($status)){
-                            $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
-                            $exit_msg_level="WARN";
-                        }elseif(pcntl_wifsignaled($status)){
-                            $exit_msg = "mc_worker_$finished_worker_pid terminated by singal:".pcntl_wtermsig($status).". Reaping it...";
-                            $exit_msg_level="WARN";
-                        }
-                        $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
-
-                        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]['socket_key']);
-
-                        // Remove finished worker from exist worker record.
-                        if(isset($this->workers[$finished_worker_pid])){
-                            unset($this->workers[$finished_worker_pid]);
-                        }
-
-                        // Remove pid file of finished worker.
-                        if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
-                            unlink($this->worker_pid_dir."/".$finished_worker_pid);
-                        }
-
-                        // Write log
-                        $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid was reaped.");
-                        usleep(10000);
-                    }
-
-                    if(count($this->workers) == 0){
-                        $this->libs['mc_log_mgr']->write_log("All workers were reaped.");
-                    }
-
-                    $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-
-                    if(time() - $reaping_time > 10){
-                        break;
-                    }
-                }
-
-                if($this->proc_type == 'Worker'){
-                    $terminate_msg = "mc_worker_".$this->pid." terminated before finished.";
-                    $this->libs['mc_socket_mgr']->reply_client($this->libs['mc_socket_mgr']->client_sockets[0], $terminate_msg);
-                    $this->libs['mc_socket_mgr']->close_client_sockets();
-                    $this->libs['mc_log_mgr']->write_log($terminate_msg, "WARN");
-                    exit(1);
-                }else{
-                    $this->libs['mc_socket_mgr']->close_client_sockets();
-                    $this->libs['mc_log_mgr']->write_log($this->proc_type.'('.$this->pid.') stop!');
-                }
-                exit();
-        }
-    }
-
-    /*
      *  This method override inherited method to bulid a service socket before daemon loop 
      *  Return: void
      */
@@ -156,46 +42,29 @@ class masterchief extends mc_daemon{
     }
 
     /*
-     *  This method is used to reap any exist zombie child process.
-     *  Return: void
+     *
      */
-    public function clear_uncaptured_zombies(){
-        // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
-        // If error, return is -1. No child exit yet, return 0. Any child exit, return its PID.
-        $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-        while($finished_worker_pid > 0){
-            if(pcntl_wifexited($status)){
-                $exit_msg = "mc_worker_$finished_worker_pid exited normally with exit code:".pcntl_wexitstatus($status).". Reaping it...";
-                $exit_msg_level="INFO";
-            }elseif(pcntl_wifstopped($status)){
-                $exit_msg = "mc_worker_$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
-                $exit_msg_level="WARN";
-            }elseif(pcntl_wifsignaled($status)){
-                $exit_msg = "mc_worker_$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
-                $exit_msg_level="WARN";
-            }
-            $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
+    public function daemon_behavior_when_worker_exit($exit_worker_pid){
+        $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$exit_worker_pid]['socket_key']);
+        parent::daemon_behavior_when_worker_exit($exit_worker_pid);
+    } 
 
-            // After a worker is finished, close socket between service daemon and client.
-            $this->libs['mc_socket_mgr']->close_client_socket($this->workers[$finished_worker_pid]['socket_key']);
-
-            // Remove finished worker from exist worker record.
-            if(isset($this->workers[$finished_worker_pid])){
-                unset($this->workers[$finished_worker_pid]);
-            }
-
-            // Remove pid file of finished worker.
-            if(file_exists($this->worker_pid_dir."/".$finished_worker_pid)){
-                unlink($this->worker_pid_dir."/".$finished_worker_pid);
-            }
-
-            // Write log
-            $this->libs['mc_log_mgr']->write_log("mc_worker_$finished_worker_pid is reaped.");
-
-            $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
-            usleep(100000);
-        }
+    /*
+     *
+     */
+    public function worker_behavior_when_worker_terminate($terminate_msg){
+        $this->libs['mc_socket_mgr']->reply_client($this->libs['mc_socket_mgr']->client_sockets[0], $terminate_msg);
+        $this->libs['mc_socket_mgr']->close_client_sockets();
+        parent::worker_behavior_when_worker_terminate($terminate_msg);
     }
+
+    /*
+     *
+     */
+    public function daemon_behavior_when_daemon_terminate(){
+        $this->libs['mc_socket_mgr']->close_client_sockets();
+        parent::daemon_behavior_when_daemon_terminate();
+    } 
 
     /*
      *  This method will organize the input socket message into a structure array.
@@ -378,7 +247,7 @@ class masterchief extends mc_daemon{
                                     $timeout = isset($job['payload']['timeout']) ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                                     $log = array();
 
-                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing $cmd under directory '$dir' by user '$user' as user $run_user");
+                                    $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing '$cmd' under directory '$dir' by user '$user' as user '$run_user'");
 
 
                                     if($job['payload']['sync']){
@@ -463,12 +332,12 @@ class masterchief extends mc_daemon{
 
             $this->clear_timeout_worker();
 
-            // Let Daemon rest 0.2 seconds.
-            usleep(200000);
-
             // Basically, the callback function we set for SIGCHLD signal will reap every exited child worker process.
             // But here we scan again just in case we miss any SIGCHLD signal.
             $this->clear_uncaptured_zombies();
+
+            // Let Daemon rest 0.2 seconds.
+            usleep(200000);
 
         } /* End of while loop */
 
