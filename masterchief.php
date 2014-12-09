@@ -221,8 +221,12 @@ class masterchief extends mc_daemon{
                                     $this->libs['mc_socket_mgr']->client_sockets = array($client_socket);
 
                                     // Change the thread title
+                                    /*
                                     $worker_thread_title = 'mc_worker_'.$this->pid;
                                     setthreadtitle($worker_thread_title);
+                                    */
+                                    $worker_thread_title = 'Worker(PID='.$this->pid.")";
+                                    
 
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
                                     //$this->register_worker();
@@ -321,7 +325,8 @@ class masterchief extends mc_daemon{
 
                                     // write log
                                     $job_cmd = explode(' ', $job['payload']['cmd']);
-                                    $this->libs['mc_log_mgr']->write_log("Create a worker(mc_worker_$worker_pid) for ".basename($job_cmd[0]));
+                                    //$this->libs['mc_log_mgr']->write_log("Create a worker(mc_worker_$worker_pid) for ".basename($job_cmd[0]));
+                                    $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
                                 }
                             }
                         }

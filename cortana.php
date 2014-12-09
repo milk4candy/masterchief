@@ -61,8 +61,11 @@ class cortana extends mc_daemon{
                             // A worker should not have any child worker and only should have one client socket.
                             $this->workers = array();
 
+                            /*
                             $worker_thread_title = 'ctn_worker_'.$this->pid;
                             setthreadtitle($worker_thread_title);
+                            */
+                            $worker_thread_title = 'Worker(PID='.$this->pid.")";
 
                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is starting.");
 
@@ -136,7 +139,7 @@ class cortana extends mc_daemon{
                             // Service daemon part
                             $this->workers[$worker_pid] = array('start_time' => time(), 'timeout' => $job['payload']['timeout']);
                             $job_cmd = explode(' ', $job['payload']['cmd']);
-                            $this->libs['mc_log_mgr']->write_log("Create a worker(ctn_worker_$worker_pid) for ".basename($job_cmd[0]));
+                            $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
                         }
                     }else{
                         // do something when get_msg fail.

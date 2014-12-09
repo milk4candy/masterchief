@@ -102,13 +102,16 @@ abstract class mc_daemon extends daemon {
 
         switch($this->classname){
             case "masterchief":
-                $worker_prefix = 'mc_worker_';
+                //$worker_prefix = 'mc_worker_';
+                $worker_prefix = 'Worker(PID=';
                 break;
             case "cortana":
-                $worker_prefix = 'ctn_worker_';
+                //$worker_prefix = 'ctn_worker_';
+                $worker_prefix = 'Worker(PID=';
                 break;
             default:
-                $worker_prefix = 'worker_';
+                //$worker_prefix = 'worker_';
+                $worker_prefix = 'Worker(PID=';
         }
     
         switch($signo){
@@ -123,13 +126,13 @@ abstract class mc_daemon extends daemon {
                 $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG + WUNTRACED);
                 if($finished_worker_pid > 0){
                     if(pcntl_wifexited($status)){
-                        $exit_msg = $worker_prefix."$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                        $exit_msg = $worker_prefix."$finished_worker_pid) exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
                         $exit_msg_level="INFO";
                     }elseif(pcntl_wifstopped($status)){
-                        $exit_msg = $worker_prefix."$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                        $exit_msg = $worker_prefix."$finished_worker_pid) is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
                         $exit_msg_level="WARN";
                     }elseif(pcntl_wifsignaled($status)){
-                        $exit_msg = $worker_prefix."$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                        $exit_msg = $worker_prefix."$finished_worker_pid) exited by singal:".pcntl_wtermsig($status).". Reaping it...";
                         $exit_msg_level="WARN";
                     }
                     $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
@@ -137,7 +140,7 @@ abstract class mc_daemon extends daemon {
                     $this->daemon_behavior_when_worker_exit($finished_worker_pid);
 
                     // Write log
-                    $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid was reaped.");
+                    $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid) was reaped.");
                 }
                 break;
             default:
@@ -145,7 +148,7 @@ abstract class mc_daemon extends daemon {
                 if(count($this->workers) > 0){
                     $this->libs['mc_log_mgr']->write_log('Daemon is about to stop. Killing all exist workers...');
                     foreach($this->workers as $worker_pid => $worker_info){
-                        $this->libs['mc_log_mgr']->write_log("Killing $worker_prefix"."$worker_pid...");
+                        $this->libs['mc_log_mgr']->write_log("Killing $worker_prefix"."$worker_pid)...");
                         $this->kill_worker_by_pid($worker_pid, $signo);
                     }
                 }
@@ -156,13 +159,13 @@ abstract class mc_daemon extends daemon {
                 while(count($this->workers) > 0){
                     if($finished_worker_pid > 0){
                         if(pcntl_wifexited($status)){
-                            $exit_msg = $worker_prefix."$finished_worker_pid termiated with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                            $exit_msg = $worker_prefix."$finished_worker_pid) termiated with exit code:".pcntl_wexitstatus($status).". Reaping it...";
                             $exit_msg_level="INFO";
                         }elseif(pcntl_wifstopped($status)){
-                            $exit_msg = $worker_prefix."$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                            $exit_msg = $worker_prefix."$finished_worker_pid) is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
                             $exit_msg_level="WARN";
                         }elseif(pcntl_wifsignaled($status)){
-                            $exit_msg = $worker_prefix."$finished_worker_pid terminated by singal:".pcntl_wtermsig($status).". Reaping it...";
+                            $exit_msg = $worker_prefix."$finished_worker_pid) terminated by singal:".pcntl_wtermsig($status).". Reaping it...";
                             $exit_msg_level="WARN";
                         }
                         $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
@@ -170,7 +173,7 @@ abstract class mc_daemon extends daemon {
                         $this->daemon_behavior_when_worker_terminate($finished_worker_pid);
 
                         // Write log
-                        $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid was reaped");
+                        $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid) was reaped.");
                     }
 
                     if(count($this->workers) == 0){
@@ -189,7 +192,7 @@ abstract class mc_daemon extends daemon {
                 }
 
                 if($this->proc_type == 'Worker'){
-                    $terminate_msg = $worker_prefix.$this->pid." terminated before finished.";
+                    $terminate_msg = $worker_prefix.$this->pid.") terminated before finished.";
                     $this->worker_behavior_when_worker_terminate($terminate_msg);
                     exit(1);
                 }else{
@@ -207,13 +210,16 @@ abstract class mc_daemon extends daemon {
 
         switch($this->classname){
             case "masterchief":
-                $worker_prefix = 'mc_worker_';
+                //$worker_prefix = 'mc_worker_';
+                $worker_prefix = 'Worker(PID=';
                 break;
             case "cortana":
-                $worker_prefix = 'ctn_worker_';
+                //$worker_prefix = 'ctn_worker_';
+                $worker_prefix = 'Worker(PID=';
                 break;
             default:
-                $worker_prefix = 'worker_';
+                //$worker_prefix = 'worker_';
+                $worker_prefix = 'Worker(PID=';
         }
     
         // Use pnctl_waitpid() to reap finished worker, also using WNOHANG option for nonblocking mode.
@@ -221,20 +227,20 @@ abstract class mc_daemon extends daemon {
         $finished_worker_pid = pcntl_waitpid(-1, $status, WNOHANG|WUNTRACED);
         while($finished_worker_pid > 0){
             if(pcntl_wifexited($status)){
-                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
+                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid) exited with exit code:".pcntl_wexitstatus($status).". Reaping it...";
                 $exit_msg_level="INFO";
             }elseif(pcntl_wifstopped($status)){
-                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
+                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid) is stopped by singal:".pcntl_wstopsig($status).". Reaping it...";
                 $exit_msg_level="WARN";
             }elseif(pcntl_wifsignaled($status)){
-                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid exited by singal:".pcntl_wtermsig($status).". Reaping it...";
+                $exit_msg = "Found ".$worker_prefix."$finished_worker_pid) exited by singal:".pcntl_wtermsig($status).". Reaping it...";
                 $exit_msg_level="WARN";
             }
             $this->libs['mc_log_mgr']->write_log($exit_msg, $exit_msg_level);
 
             $this->daemon_behavior_when_worker_exit($finished_worker_pid);
             
-            $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid was reaped.");
+            $this->libs['mc_log_mgr']->write_log($worker_prefix."$finished_worker_pid) was reaped.");
 
             usleep(100000);
 
@@ -282,15 +288,8 @@ abstract class mc_daemon extends daemon {
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
         exec($this->proj_dir."/lib/module/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
         if($pass_auth == 0){
-            if($user == $run_user){
-                $job['msg'] = 'Pass account authentication.';
-                $job['msg_level'] = 'INFO';
-            }else{
-                $sudo_check = $this->libs['sudo_checker']->do_check($user, $run_user, $cmd, $dir);
-                $job['status'] = $sudo_check['status'];
-                $job['msg'] = $sudo_check['msg'];
-                $job['msg_level'] = $sudo_check['msg_level'];
-            }
+            $job['msg'] = 'Pass account authentication.';
+            $job['msg_level'] = 'INFO';
         }else{
             $job['status'] = false;
             $job['msg'] = "Can't pass account authentication. Please make sure your username and password is correct.";
