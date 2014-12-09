@@ -93,7 +93,8 @@ pam_authenticate          = libpam.pam_authenticate
 pam_authenticate.restype  = c_int
 pam_authenticate.argtypes = [PamHandle, c_int]
 
-class pam():
+#class pam():
+class pam:
     code   = 0
     reason = None
 
