@@ -341,6 +341,9 @@ class masterchief extends mc_daemon{
             // But here we scan again just in case we miss any SIGCHLD signal.
             $this->clear_uncaptured_zombies();
 
+            // Log rotate
+            $this->libs['mc_log_mgr']->logrotate();
+
             // Let Daemon rest 0.2 seconds.
             usleep(200000);
 
