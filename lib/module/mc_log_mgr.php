@@ -42,7 +42,36 @@ class mc_log_mgr extends mc_basic_tool{
         }
     }
 
-    public function logrotate($size=3, $rotate_num=4){
+    public function logrotate($size=1, $rotate_num=5){
+        if(file_exists($this->log) and is_file($this->log)){
+            if(filesize($this->log)/102400 > $size){
+                for($i=$rotate_num; $i>0; $i-- ){
+                    if(file_exists($this->log.".$i") and is_file($this->log.".$i")){
+                        if($i == $rotate_num){
+                            exec("rm -f ".$this->log.".$i", $output, $exec_code);
+                        }else{
+                            exec("mv -f ".$this->log.".$i ".$this->log.".".($i+1), $output, $exec_code);
+                        }
+                    }
+                }
+                exec("mv -f ".$this->log." ".$this->log.".1", $output, $exec_code);
+            }
+        }
+
+        if(file_exists($this->errlog) and is_file($this->errlog)){
+            if(filesize($this->errlog)/102400 > $size){
+                for($i=$rotate_num; $i>0; $i-- ){
+                    if(file_exists($this->errlog.".$i") and is_file($this->errlog.".$i")){
+                        if($i == $rotate_num){
+                            exec("rm -f ".$this->errlog.".$i", $output, $exec_code);
+                        }else{
+                            exec("mv -f ".$this->errlog.".$i ".$this->errlog.".".($i+1), $output, $exec_code);
+                        }
+                    }
+                }
+                exec("mv -f ".$this->errlog." ".$this->errlog.".1", $output, $exec_code);
+            }
+        }
     }
 
 }

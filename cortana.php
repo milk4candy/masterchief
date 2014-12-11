@@ -152,6 +152,8 @@ class cortana extends mc_daemon{
 
             $this->clear_uncaptured_zombies();
 
+            $this->libs['mc_log_mgr']->logrotate();
+
             usleep(200000);
 
         } /* End of while loop */
