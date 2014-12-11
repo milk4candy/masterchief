@@ -123,9 +123,8 @@ class masterchief extends mc_daemon{
         }
         if(in_array('-t', $input_array)){
             $payload['timeout'] = $input_array[array_search('-t', $input_array)+1];
-        }else{
-            $payload['timeout'] = $this->config['basic']['default_timeout'];
         }
+        
 
         $job['status'] = $status;
         $job['payload'] = $payload;
