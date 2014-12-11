@@ -85,7 +85,7 @@ class cortana extends mc_daemon{
                             $cmd = $job['payload']['cmd'];
                             $dir = $job['payload']['dir'];
                             $run_user = $job['payload']['run_user'];
-                            $timeout = isset($job['payload']['timeout']) ? $job['payload']['timeout'] : $this->config['basic']['timeout'];
+                            $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                             $log = array();
 
                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing '$cmd' under directory '$dir' by user '$user' as user '$run_user'.");
@@ -136,8 +136,9 @@ class cortana extends mc_daemon{
                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                             exit();
                         }else{
+                            $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                             // Service daemon part
-                            $this->workers[$worker_pid] = array('start_time' => time(), 'timeout' => $job['payload']['timeout']);
+                            $this->workers[$worker_pid] = array('start_time' => time(), 'timeout' => $timeout);
                             $job_cmd = explode(' ', $job['payload']['cmd']);
                             $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
                         }

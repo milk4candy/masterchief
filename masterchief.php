@@ -123,6 +123,8 @@ class masterchief extends mc_daemon{
         }
         if(in_array('-t', $input_array)){
             $payload['timeout'] = $input_array[array_search('-t', $input_array)+1];
+        }else{
+            $payload['timeout'] = false;
         }
         
 
@@ -247,7 +249,7 @@ class masterchief extends mc_daemon{
                                     $cmd = $job['payload']['cmd'];
                                     $dir = $job['payload']['dir'];
                                     $run_user = $job['payload']['run_user'];
-                                    $timeout = isset($job['payload']['timeout']) ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
+                                    $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                                     $log = array();
 
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing '$cmd' under directory '$dir' by user '$user' as user '$run_user'");
@@ -320,7 +322,8 @@ class masterchief extends mc_daemon{
                                     // Service daemon part
 
                                     // Put new worker and its related info in to a mapping array for future management. 
-                                    $this->workers[$worker_pid] = array('socket_key' => $client_socket_key, 'start_time' => time(), 'timeout' => $job['payload']['timeout']);
+                                    $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
+                                    $this->workers[$worker_pid] = array('socket_key' => $client_socket_key, 'start_time' => time(), 'timeout' => $timeout);
 
                                     // write log
                                     $job_cmd = explode(' ', $job['payload']['cmd']);
