@@ -301,17 +301,21 @@ abstract class mc_daemon extends daemon {
     public function clear_timeout_worker(){
         foreach($this->workers as $worker_pid => $info){
             if(time() - $info['start_time'] > $info['timeout']){
-                if($info['terminate_times'] < 3){
-                    $msg = "Worker(PID=$worker_pid) reach timeout limit. Terminate it ....";
+                if($info['terminate_times'] == 0){
+                    $msg = "Worker(PID=$worker_pid) reach timeout limit. Sending termination signal to it...";
                     $this->libs['mc_log_mgr']->write_log($msg);
                     $this->kill_worker_by_pid($worker_pid, SIGTERM);
                     $this->workers[$worker_pid]['terminate_times'] += 1;
-                }elseif($info['terminate_times'] == 3){
-                    $msg = "Worker(PID=$worker_pid) reach timeout limit. Terminate it ....";
+                }elseif($info['terminate_times'] > 0 and $info['terminate_times'] < 2){
+                    $msg = "Timeout worker(PID=$worker_pid) is still alive. Sending termination signal to it again....";
                     $this->libs['mc_log_mgr']->write_log($msg);
                     $this->kill_worker_by_pid($worker_pid, SIGTERM);
                     $this->workers[$worker_pid]['terminate_times'] += 1;
-                    $msg = "Daemon had already send the final termination signal to worker(PID=$worker_pid). Wait for worker terminate...";
+                }elseif($info['terminate_times'] == 2){
+                    $msg = "Timeout worker(PID=$worker_pid) is still alive. Sending final termination signal to it....";
+                    $this->libs['mc_log_mgr']->write_log($msg);
+                    $this->kill_worker_by_pid($worker_pid, SIGTERM);
+                    $this->workers[$worker_pid]['terminate_times'] += 1;
                     $this->libs['mc_log_mgr']->write_log($msg);
                 }else{
                     // do nothing
@@ -321,19 +325,11 @@ abstract class mc_daemon extends daemon {
         
     }
 
-    public function kill_worker_by_pid_2($worker_pid, $signo){
-        $pid_file = $this->worker_pid_dir."/".$worker_pid;
-        posix_kill($worker_pid, $signo);
-        if(file_exists($pid_file)){
-            exec("ps --ppid `cat $pid_file` -o pid --no-heading|xargs kill -9", $job_kill_output, $job_kill_exec_code);
-        }
-        return;
-    }
-
     public function kill_worker_by_pid($worker_pid, $signo){
 
         // Kill worker first
-        posix_kill($worker_pid, $signo);
+        //posix_kill($worker_pid, $signo);
+
 
         // Find PPID of job which is executing by worker.
         $pid_file = $this->worker_pid_dir."/".$worker_pid;
@@ -342,10 +338,17 @@ abstract class mc_daemon extends daemon {
         }
         if($job_ppid_get_exec_code == 0 and count($job_ppid_output) == 1){
             $job_ppid = $job_ppid_output[0];
+            //$this->libs['mc_log_mgr']->write_log("Job's PPID is: $job_ppid"); // This is debug outout
         }
 
         // Find job PIDs by its PPID
         $job_pids = $this->get_pids_by_ppid($job_ppid);
+
+        /* Debug output
+        if(count($job_pids) > 0){
+            $this->libs['mc_log_mgr']->write_log("There are ".count($job_pids)." job(s). First job's pid is: $job_pids[0]");
+        }
+         */
 
         // Add those job PIDs to a array.
         $pids_to_kill = $job_pids;
@@ -369,17 +372,26 @@ abstract class mc_daemon extends daemon {
             $job_pids = $new_pids_to_kill; 
         }
 
-        // Kill all job process and their descendants. 
-        sort($pids_to_kill, SORT_NUMERIC);
-        foreach($pids_to_kill as $pid_to_kill){
-            posix_kill($pid_to_kill, $signo);
+        //$this->libs['mc_log_mgr']->write_log("There are ".count($pids_to_kill)." job(s) to kill."); // This is debug output
+
+        if(count($pids_to_kill) > 0){
+            // Kill all job process and their descendants. 
+            sort($pids_to_kill, SORT_NUMERIC);
+            $this->libs['mc_log_mgr']->write_log("Killing all jobs and their desendant jobs triggered by worker(PID=$worker_pid)...");
+            foreach($pids_to_kill as $pid_to_kill){
+                $this->libs['mc_log_mgr']->write_log("Killing job(PID=$pid_to_kill)...");
+                posix_kill($pid_to_kill, $signo);
+            }
         }
 
     }
 
     public function get_pids_by_ppid($ppid){
-        exec("ps --ppid $ppid -o pid --no--heading", $pids, $exec_code);
+        exec("ps --ppid $ppid -o pid --no-heading", $pids, $exec_code);
         if($exec_code == 0){
+            foreach($pids as $key => $pid){
+                $pids[$key] = trim($pid);
+            }
             return $pids;
         }
         return array();
