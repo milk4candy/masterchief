@@ -294,10 +294,10 @@ class masterchief extends mc_daemon{
                                             if(count($output) > 0){
                                                 $output_msg = implode("\n", $output);
                                                 $log['msg'] = "$worker_thread_title execute job abnormally with following message:\n$output_msg";
-                                                $log['level'] = "WARNING";
+                                                $log['level'] = "WARN";
                                             }else{
                                                 $log['msg'] = "$worker_thread_title execute job abnormally with no message.";
-                                                $log['level'] = "WARNING";
+                                                $log['level'] = "WARN";
                                             }
                                         }
 

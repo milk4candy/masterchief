@@ -125,10 +125,10 @@ class cortana extends mc_daemon{
                                 if(count($output) > 0){
                                     $output_msg = implode("\n", $output);
                                     $log['msg'] = "$worker_thread_title executed the job abnormally with following meaasge:\n$output_msg";
-                                    $log['level'] = "WARNING";
+                                    $log['level'] = "WARN";
                                 }else{
                                     $log['msg'] = "$worker_thread_title executed the job abnormally with no meaasge.";
-                                    $log['level'] = "WARNING";
+                                    $log['level'] = "WARN";
                                 }
                             }
 
