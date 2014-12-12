@@ -323,7 +323,7 @@ class masterchief extends mc_daemon{
 
                                     // Put new worker and its related info in to a mapping array for future management. 
                                     $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
-                                    $this->workers[$worker_pid] = array('socket_key' => $client_socket_key, 'start_time' => time(), 'timeout' => $timeout);
+                                    $this->workers[$worker_pid] = array('socket_key' => $client_socket_key, 'start_time' => time(), 'timeout' => $timeout, 'terminate_times' => 0);
 
                                     // write log
                                     $job_cmd = explode(' ', $job['payload']['cmd']);

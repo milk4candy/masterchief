@@ -136,9 +136,9 @@ class cortana extends mc_daemon{
                             $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                             exit();
                         }else{
-                            $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                             // Service daemon part
-                            $this->workers[$worker_pid] = array('start_time' => time(), 'timeout' => $timeout);
+                            $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
+                            $this->workers[$worker_pid] = array('start_time' => time(), 'timeout' => $timeout, 'terminate_times' => 0);
                             $job_cmd = explode(' ', $job['payload']['cmd']);
                             $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
                         }
