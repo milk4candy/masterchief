@@ -44,7 +44,7 @@ class cortana extends mc_daemon{
 
         while(true){
             declare(ticks=1){
-                if(count($this->worker) < $this->config['basic']['maxworker'])
+                if(count($this->workers) < $this->config['basic']['maxworker'])
                     if($this->libs['mc_queue_mgr']->is_msg_in_queue()){
                         $job = $this->libs['mc_queue_mgr']->get_msg();
                         if($job['status']){
