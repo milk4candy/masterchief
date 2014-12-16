@@ -27,10 +27,12 @@ abstract class mc_daemon extends daemon {
     public function __construct($cmd_args){
         parent::__construct();
         umask(0);
+        $this->daemon_pid_dir = $this->proj_dir."/pid/".$this->classname;
         $this->worker_pid_dir = $this->proj_dir."/pid/".$this->classname."/worker";
         $this->args = $this->prepare_args($cmd_args);
         $this->config = $this->prepare_config();
         $this->init_libs($this->proj_dir.'/lib/module');
+        $this->create_daemon_pid_dir();
         $this->create_worker_pid_dir();
     } 
 
@@ -249,6 +251,20 @@ abstract class mc_daemon extends daemon {
         }
     }
 
+    public function custom_preparation(){ 
+        parent::custom_preparation();
+        $this->create_daemon_pid_file();
+    }
+
+    public function create_daemon_pid_file(){
+        if(file_put_contents("$this->daemon_pid_dir/$this->classname.pid", $this->pid, LOCK_EX)){
+            $this->libs['mc_log_mgr']->write_log("PID file is created.");
+        }else{
+            $this->libs['mc_log_mgr']->write_log("Can't create PID file, daemon stop!");
+            exit(1);
+        }
+    }
+
     public function daemon_behavior_when_worker_exit($exit_worker_pid){
         // Remove finished worker from exist worker record.
         if(isset($this->workers[$exit_worker_pid])){
@@ -270,6 +286,7 @@ abstract class mc_daemon extends daemon {
     }
 
     public function daemon_behavior_when_daemon_terminate(){
+        unlink("$this->daemon_pid_dir/$this->classname.pid");
         $this->libs['mc_log_mgr']->write_log($this->proc_type." ".$this->classname."(PID=".$this->pid.") stop!");
     }
 
@@ -396,6 +413,15 @@ abstract class mc_daemon extends daemon {
             return $pids;
         }
         return array();
+    }
+
+    public function create_daemon_pid_dir(){
+        try{
+            $this->libs['mc_log_mgr']->create_dir($this->daemon_pid_dir, 0777);
+        }catch(Exception $e){
+            echo $e->getMessage();
+            exit(1);
+        }
     }
 
     public function create_worker_pid_dir(){

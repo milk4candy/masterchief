@@ -37,6 +37,7 @@ class masterchief extends mc_daemon{
      *  Return: void
      */
     public function custom_preparation(){
+        parent::custom_preparation();
         // Build a service socket
         $this->libs['mc_socket_mgr']->build_service_socket();
     }
