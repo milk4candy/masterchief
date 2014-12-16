@@ -71,7 +71,7 @@
                     $i = 0;
                     while($response = socket_read($socket, 1024)){
                         if($i == 0){
-                            if(!preg_match("/^\[INFO\]/")){
+                            if(!preg_match("/^\[INFO\]/", $response)){
                                 $is_ok = false;
                             }
                         }
