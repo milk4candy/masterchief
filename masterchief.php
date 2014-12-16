@@ -52,10 +52,10 @@ class masterchief extends mc_daemon{
     /*
      *
      */
-    public function worker_behavior_when_worker_terminate($terminate_msg){
-        $this->libs['mc_socket_mgr']->reply_client($this->libs['mc_socket_mgr']->client_sockets[0], $terminate_msg);
+    public function worker_behavior_when_worker_terminate($terminate_msg, $msg_level){
+        $this->libs['mc_socket_mgr']->reply_client($this->libs['mc_socket_mgr']->client_sockets[0], "[$msg_level]".$terminate_msg);
         $this->libs['mc_socket_mgr']->close_client_sockets();
-        parent::worker_behavior_when_worker_terminate($terminate_msg);
+        parent::worker_behavior_when_worker_terminate($terminate_msg, $msg_level);
     }
 
     /*
@@ -311,7 +311,7 @@ class masterchief extends mc_daemon{
                                     }
 
                                     //Write log and reply client
-                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, $log['msg']);
+                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "[".$log['level']."]".$log['msg']);
                                     $this->libs['mc_socket_mgr']->close_client_sockets();
                                     $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
                                     //$this->report_worker_result();

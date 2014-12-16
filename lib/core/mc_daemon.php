@@ -193,7 +193,8 @@ abstract class mc_daemon extends daemon {
 
                 if($this->proc_type == 'Worker'){
                     $terminate_msg = $worker_prefix.$this->pid.") terminated before finished.";
-                    $this->worker_behavior_when_worker_terminate($terminate_msg);
+                    $msg_level = "WARN";
+                    $this->worker_behavior_when_worker_terminate($terminate_msg, $msg_level);
                     exit(1);
                 }else{
                     $this->daemon_behavior_when_daemon_terminate();
@@ -264,8 +265,8 @@ abstract class mc_daemon extends daemon {
         $this->daemon_behavior_when_worker_exit($terminate_worker_pid);
     }
 
-    public function worker_behavior_when_worker_terminate($terminate_msg){
-        $this->libs['mc_log_mgr']->write_log($terminate_msg, "WARN");
+    public function worker_behavior_when_worker_terminate($terminate_msg, $msg_level){
+        $this->libs['mc_log_mgr']->write_log($terminate_msg, $msg_level);
     }
 
     public function daemon_behavior_when_daemon_terminate(){

@@ -60,22 +60,35 @@
         public function execute(){
             $socket_proto = getprotobyname('tcp');
             $socket = socket_create(AF_INET, SOCK_STREAM, $socket_proto);
+            $is_ok = true;
 
             $connection = socket_connect($socket, $this->socket_host, $this->socket_port);
             if($connection){
                 if(!socket_write($socket, $this->jobs, strlen($this->jobs))){
                     echo("Write failed\n");
+                    exit(1);
                 }else{
-                    while($response = socket_read($socket, 2048)){
+                    $i = 0;
+                    while($response = socket_read($socket, 1024)){
+                        if($i == 0){
+                            if(!preg_match("/^\[INFO\]/")){
+                                $is_ok = false;
+                            }
+                        }
                         echo $response."\n";
-                        break;
+                        $i ++;
                     }
                 }
             }
             socket_close($socket);
+
+            if($is_ok){
+                exit();
+            }else{
+                exit(1);
+            }
         }
     }
 
     $client = new mc_client($argv);
     $client->execute();
-    exit();
