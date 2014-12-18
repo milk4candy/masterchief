@@ -10,7 +10,7 @@
 
 首先，本專案名稱暫定為masterchief，英文是「士官長」的意思，取其能指揮士官跟小兵做各種事情的意思，來比擬控制各項"Job"進行的程式功能。
 
-目前的規劃是至少會有3支程式，其暫定名稱與功能如下：
+目前的規劃是至少會有4支主要程式，其暫定名稱與功能如下：
 
 mc_client:
     這是用於在client主機上給各種程式將工作需求發送到Job Center的程式，由於其接口是透過OS的命令列來呼叫，所以可跨語言平台使用。
@@ -25,15 +25,21 @@ masterchief:
            若送來的的工作為非同步工作時，mastercheif會將該工作派入queue中，靜候處理。
            當同步工作的子程序結束(出錯、逾時或執行完畢)或是異步工作被排入queue後，masterchief會透過socket回報mc_client，並加以紀錄到本機log與DB中，以利後續查詢與處理。
 
-mc_queue_processor:
+cortana:
     用來處理被masterchief放入queue的工作之程式，特色如下：
     1. 為一常駐程式(daemon)。
     2. 處理queue中工作時會fork出一個子程序來加以執行，這也是為了解決排隊問題，也同樣有子程序逾時與數量控制，用來避免主機記憶體虛耗。
     3. 工作完成時會紀錄到本機log與DB中，以利後續查詢與處理。
 
-mc_db_checker:
-    用來檢查在DB中mc_queue_work執行失敗的工作紀錄，並將其排入queue等待再次執行。若DB中該工作的執行失敗次數達到3次後，便後不再執行並發出email通知。
+marine:
+    1. 設計用來放在cron里定時執行
+    2. 用來檢查在DB中masterchief或cortana中執行失敗並有設定失敗重做的的工作紀錄，並將其排入queue等待再次執行。若DB中該工作的執行失敗次數達到設定次數後，便後不再執行並發出email通知。
 
 
 由於工作細節與結果都會進入DB，屆時亦規劃提供網頁介面加以查詢與管理工作(例如利用網頁重新執行前回執行失敗的工作)。
+
+使用範例：
+
+    情境：重啟服務(同步)
+        mc_client -h webserver -u sudouser -p passwd --run-user root --dir '/etc/init.d' --cmd 'httpd restart' --sync
 

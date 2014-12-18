@@ -183,8 +183,8 @@ then
         *)
             script=$(basename $0)
             echo "Usage:"
-            echo "1. $script (masterchief|cotana) (start|stop|restart|reload)"
-            echo "2. $script (queue) (destory)"
+            echo "1. $script {masterchief|cotana} {start|stop|restart|reload}"
+            echo "2. $script queue {status|destory}"
             ;;
     esac
 else
@@ -198,8 +198,8 @@ else
         *)
             script=$(basename $0)
             echo "Usage:"
-            echo "1. $script (masterchief|cotana) (start|stop|restart|reload)"
-            echo "2. $script (queue) (destory)"
+            echo "1. $script {masterchief|cotana} {start|stop|restart|reload}"
+            echo "2. $script queue {status|destory}"
             ;;
     esac
 fi
