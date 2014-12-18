@@ -1,0 +1,207 @@
+#! /bin/bash
+
+readonly TRUE="TRUE"
+readonly FALSE="FALSE"
+
+daemon_name=$1
+
+action=$2
+
+proj_dir=$(dirname $(cd $(dirname $0) && pwd))
+
+
+
+get_daemon_pid(){
+    local pid_file="$proj_dir/pid/$1/$1.pid"
+
+    if test -f "$pid_file"
+    then
+        local pid=$(cat $pid_file)
+        echo $pid
+    else
+        echo "0"
+    fi
+}
+
+check_if_daemon_running_by_name(){
+    local check=$(ps -A|grep $1)
+    if test -n "$check"
+    then
+        echo $TRUE
+    else
+        echo $FALSE
+    fi
+}
+
+check_if_daemon_running_by_pid(){
+    local check=$(ps --pid $1 -o pid --no-heading)
+    if test -n "$check"
+    then
+        echo $TRUE
+    else
+        echo $FALSE
+    fi
+}
+
+start_daemon(){
+    local daemon_is_running=$(check_if_daemon_running_by_name $daemon_name)
+    if test "$daemon_is_running" == "$TRUE" 
+    then
+        echo "There is a running daemon exist already."
+        return 3
+    else
+        echo "Starting $daemon_name deamon..."
+        $proj_dir/$daemon_name.php
+        if test $? -eq 0
+        then
+            sleep 3
+            local pid=$(get_daemon_pid $daemon_name)
+            if test "$pid" != "0"
+            then
+                local daemon_is_running=$(check_if_daemon_running_by_pid $pid)
+                if test "$daemon_is_running" == "$TRUE"
+                then
+                    echo "$daemon_name daemon(PID=$pid) is running now."
+                    return 0
+                else
+                    echo "Startup command execution success. But can't find any running $daemon_name daemon."
+                    return 3
+                fi
+            else
+                echo "Can't find PID file of $daemon_name daemon to check daemon is up or not."
+                return 2
+            fi
+        else
+            echo "Startup command execution fail."
+            return 1
+        fi
+    fi
+}
+
+stop_daemon(){
+    local daemon_is_running=$(check_if_daemon_running_by_name $daemon_name)
+    if test "$daemon_is_running" == "$TRUE"
+    then
+        local pid=$(get_daemon_pid $daemon_name)
+        if test "$pid" != "0"
+        then
+            echo "Stopping $daemon_name daemon(PID=$pid)..."
+            kill $pid
+            sleep 3
+            local daemon_is_running=$(check_if_daemon_running_by_pid $pid)
+            if test "$daemon_is_running" == "$FALSE"
+            then
+                rm -f $pid_file
+                if test $? -ne 0
+                then
+                    echo "$daemon_name daemon(PID=$pid) is stop now. But can't remove PID file '$pif_file'."
+                    return 3
+                else
+                    echo "$daemon_name daemon(PID=$pid) is stop now."
+                    return 0
+                fi
+            else
+                echo "$daemon_name daemon(PID=$pid) seems still alive"
+                return 2
+            fi
+        else
+            echo "Can't find PID file of $daemon_name daemon to stop daemon"
+            return 1
+        fi
+    else
+        echo "There's no running $daemon_name deamon to stop."
+        return 0
+    fi
+}
+
+reload_daemon(){
+    local daemon_is_running=$(check_if_daemon_running_by_name $daemon_name)
+    if test "$daemon_is_running" == "$TRUE"
+    then
+        local pid=$(get_daemon_pid $daemon_name)
+        echo "$daemon_name daemon(PID=$pid) is reloading..."
+        kill -10 $pid
+        sleep 3
+        local daemon_is_running=$(check_if_daemon_running_by_pid $pid)
+        if test "$daemon_is_running" == "$TRUE"
+        then
+            echo "$daemon_name daemon(PID=$pid) is reloaded."
+            return 0
+        else
+            echo "Something is wrong. $daemon_name daemon(PID=$pid) is dead."
+            return 2
+        fi
+    else
+        echo "There's no running $daemon_name deamon to reload."
+        return 1
+    fi
+}
+
+display_queue(){
+    $proj_dir/lib/module/queue_mgr.php status
+}
+
+destroy_queue(){
+    local mc="masterchief"
+    local ctn="cortana"
+    local mc_is_running=$(check_if_daemon_running_by_name $mc)
+    local ctn_is_running=$(check_if_daemon_running_by_name $ctn)
+    local mc_pid=$(get_daemon_pid $mc)
+    local ctn_pid=$(get_daemon_pid $ctn)
+    if [ "$mc_is_running" == "$FALSE" -a "$ctn_is_running" == "$FALSE" -a "$mc_pid" == "0" -a "$ctn_pid" == "0" ]
+    then
+        $proj_dir/lib/module/queue_mgr.php destroy
+    else
+        echo "There is daemon still up. You can't destory queue right now."
+    fi
+}
+
+# main program
+
+if test "$daemon_name" != "queue"
+then
+    case $action in
+        start)
+            start_daemon
+            ;;
+        stop)
+            stop_daemon
+            ;;
+        restart)
+            stop_daemon
+            if test $? -eq 0
+            then
+                start_daemon
+            fi
+            ;;
+        reload)
+            reloda_daemon
+            ;;
+        test)
+            check_if_daemon_running_by_name $daemon_name
+            ;;
+        *)
+            script=$(basename $0)
+            echo "Usage:"
+            echo "1. $script (masterchief|cotana) (start|stop|restart|reload)"
+            echo "2. $script (queue) (destory)"
+            ;;
+    esac
+else
+    case $action in
+        status)
+            display_queue
+            ;;
+        destroy)
+            destroy_queue
+            ;;
+        *)
+            script=$(basename $0)
+            echo "Usage:"
+            echo "1. $script (masterchief|cotana) (start|stop|restart|reload)"
+            echo "2. $script (queue) (destory)"
+            ;;
+    esac
+fi
+
+exit 0
