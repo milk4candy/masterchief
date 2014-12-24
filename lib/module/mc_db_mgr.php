@@ -66,7 +66,7 @@ class mc_db_mgr extends mc_basic_tool{
             $stmt = $this->pdo->prepare($sql);
 
             foreach($info as $field_name => $field_val){
-                $stmt->bindParam(":$field_name", $field_val);
+                $stmt->bindValue(":$field_name", $field_val);
             }
 
             $stmt->execute();
