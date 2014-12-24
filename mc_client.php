@@ -22,14 +22,11 @@
                 $arg_key = array_search('-h', $args) + 1;
                 $this->socket_host = $args[$arg_key];
             }
-            if(!in_array('-t', $args)){
+            if(!in_array('--port', $args)){
                 $this->socket_port = 9527;
             }else{
-                $arg_key = array_search('-t', $args) + 1;
+                $arg_key = array_search('--port', $args) + 1;
                 $this->socket_port = (int)$args[$arg_key];
-            }
-            if(!in_array('-r', $args)){
-                array_push($args, '-r', 3);
             }
             if(!in_array('-u', $args)){
                 echo 'Please use -u argument to provide username'."\n";
