@@ -127,6 +127,22 @@ class masterchief extends mc_daemon{
         }else{
             $payload['timeout'] = false;
         }
+        if(in_array('-r', $input_array)){
+            $payload['retry'] = $input_array[array_search('-r', $input_array)+1];
+        }else{
+            $payload['retry'] = 0;
+        }
+        if(in_array('--cat', $input_array)){
+            $payload['cat'] = $input_array[array_search('--cat', $input_array)+1];
+        }else{
+            $payload['cat'] = NULL;
+        }
+        if(in_array('--seq', $input_array)){
+            $payload['seq'] = $input_array[array_search('--seq', $input_array)+1];
+        }else{
+            $payload['seq'] = NULL;
+        }
+        
         
 
         $job['status'] = $status;
@@ -195,10 +211,10 @@ class masterchief extends mc_daemon{
                             if($input = socket_read($client_socket, 2048)){
 
                                 // parse input string to a organized job info array
-                                $job = $this->parse_socket_input($input);
-                                if(!$job['status']){
-                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "Missing argument: ".$job['msg']);
-                                    $this->libs['mc_log_mgr']->write_log("Missing argument: ".$job['msg'].", worker(".$this->pid.") exits.", $job['msg_level']);
+                                $this->job = $this->parse_socket_input($input);
+                                if(!$this->job['status']){
+                                    $this->libs['mc_socket_mgr']->reply_client($client_socket, "Missing argument: ".$this->job['msg']);
+                                    $this->libs['mc_log_mgr']->write_log("Missing argument: ".$this->job['msg'].", worker(".$this->pid.") exits.", $this->job['msg_level']);
                                     exit();
                                 }
 
@@ -209,13 +225,17 @@ class masterchief extends mc_daemon{
                                     $this->libs['mc_log_mgr']->write_log("Fail to create a worker", "ERROR");
                                 }elseif(!$worker_pid){
 
+                                    // Worker part
+
                                     // Because we will create our timeout mechanisum, we diasble php built-in timeout.
                                     set_time_limit(0);
 
-                                    // Worker part
-
-                                    $this->proc_type = 'Worker';
+                                    $this->stime = time();
                                     $this->pid = getmypid();
+                                    $this->hash = $this->gen_proc_hash();
+                                    $this->proc_type = 'Worker';
+
+                                    $this->register_worker_to_db();
 
                                     // A worker should not have any child worker and service(listening) socket and only should have one client socket.
                                     $this->workers = array();
@@ -234,29 +254,31 @@ class masterchief extends mc_daemon{
                                     //$this->register_worker();
 
                                     // Check if the job is allowed to execute.
-                                    $job = $this->authenticate_job($job);
-                                    if(!$job['status']){
-                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, $job['msg']);
-                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_titlei : ".$job['msg'], $job['msg_level']);
-                                            $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
+                                    $this->authenticate_job();
+                                    if(!$this->job['status']){
+                                        $this->libs['mc_socket_mgr']->reply_client($client_socket, $this->job['msg']);
+                                        $this->libs['mc_socket_mgr']->close_client_sockets();
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_titlei : ".$this->job['msg'], $this->job['msg_level']);
+                                        $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
+                                        $this->libs['mc_db_mgr']->report_worker_result_to_db("RF", $this->job['msg']);
                                         exit();
                                     }
 
                                     // Excuting Job
                                     
                                     // Prepare variables
-                                    $user = $job['payload']['user'];
-                                    $passwd = $job['payload']['passwd'];
-                                    $cmd = $job['payload']['cmd'];
-                                    $dir = $job['payload']['dir'];
-                                    $run_user = $job['payload']['run_user'];
-                                    $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
+                                    $user = $this->job['payload']['user'];
+                                    $passwd = $this->job['payload']['passwd'];
+                                    $cmd = $this->job['payload']['cmd'];
+                                    $dir = $this->job['payload']['dir'];
+                                    $run_user = $this->job['payload']['run_user'];
+                                    $timeout = $this->job['payload']['timeout'] ? $this->job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                                     $log = array();
 
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is executing '$cmd' under directory '$dir' by user '$user' as user '$run_user'");
 
 
-                                    if($job['payload']['sync']){
+                                    if($this->job['payload']['sync']){
                                         // Do the job now
                                         
                                         // Execute command
@@ -286,9 +308,11 @@ class masterchief extends mc_daemon{
                                                 $output_msg = implode("\n", $output);
                                                 $log['msg'] = "$worker_thread_title execute job successfully with following message:\n$output_msg";
                                                 $log['level'] = "INFO";
+                                                $log['status'] = "RS";
                                             }else{
                                                 $log['msg'] = "$worker_thread_title execute job successfully with no message.";
                                                 $log['level'] = "INFO";
+                                                $log['status'] = "RS";
                                             }
                                         }else{
                                             // Job fail.
@@ -296,26 +320,29 @@ class masterchief extends mc_daemon{
                                                 $output_msg = implode("\n", $output);
                                                 $log['msg'] = "$worker_thread_title execute job abnormally with following message:\n$output_msg";
                                                 $log['level'] = "WARN";
+                                                $log['status'] = "RF";
                                             }else{
                                                 $log['msg'] = "$worker_thread_title execute job abnormally with no message.";
                                                 $log['level'] = "WARN";
+                                                $log['status'] = "RF";
                                             }
                                         }
 
                                     }else{
                                         // Put job in queue
                                         $this->libs['mc_log_mgr']->write_log("$worker_thread_title is putting job into queue.");
-                                        $send_result = $this->libs['mc_queue_mgr']->send_msg($job);
+                                        $send_result = $this->libs['mc_queue_mgr']->send_msg($this->job);
 
                                         $log['msg']= "$worker_thread_title : ".$send_result['msg'];
                                         $log['level'] = $send_result['level'];
+                                        $log['status'] = $send_result['status'] ? "QS" : "QF";
                                     }
 
                                     //Write log and reply client
                                     $this->libs['mc_socket_mgr']->reply_client($client_socket, "[".$log['level']."]".$log['msg']);
                                     $this->libs['mc_socket_mgr']->close_client_sockets();
                                     $this->libs['mc_log_mgr']->write_log($log['msg'], $log['level']);
-                                    //$this->report_worker_result();
+                                    $this->report_worker_result_to_db($log['status'], $log['msg']);
                                     $this->libs['mc_log_mgr']->write_log("$worker_thread_title is exiting.");
                                     exit();
 
@@ -323,11 +350,11 @@ class masterchief extends mc_daemon{
                                     // Service daemon part
 
                                     // Put new worker and its related info in to a mapping array for future management. 
-                                    $timeout = $job['payload']['timeout'] ? $job['payload']['timeout'] : $this->config['basic']['default_timeout'];
+                                    $timeout = $this->job['payload']['timeout'] ? $this->job['payload']['timeout'] : $this->config['basic']['default_timeout'];
                                     $this->workers[$worker_pid] = array('socket_key' => $client_socket_key, 'start_time' => time(), 'timeout' => $timeout, 'terminate_times' => 0);
 
                                     // write log
-                                    $job_cmd = explode(' ', $job['payload']['cmd']);
+                                    $job_cmd = explode(' ', $this->job['payload']['cmd']);
                                     //$this->libs['mc_log_mgr']->write_log("Create a worker(mc_worker_$worker_pid) for ".basename($job_cmd[0]));
                                     $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
                                 }

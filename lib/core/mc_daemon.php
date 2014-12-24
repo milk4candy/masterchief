@@ -8,9 +8,12 @@ abstract class mc_daemon extends daemon {
      * Define data members *
      ***********************/
 
-    public $args;
-    public $config;
-    public $libs;
+    public $args = null;
+    public $config = null;
+    public $libs = null;
+    public $stime = null;
+    public $hash = null;
+    public $job = null;
     public $workers = array();
     public $proc_type = 'Daemon';
 
@@ -254,6 +257,8 @@ abstract class mc_daemon extends daemon {
     public function custom_preparation(){ 
         parent::custom_preparation();
         $this->create_daemon_pid_file();
+        $this->stime = time();
+        $this->hash = $this->gen_proc_hash(); 
     }
 
     public function create_daemon_pid_file(){
@@ -283,6 +288,7 @@ abstract class mc_daemon extends daemon {
 
     public function worker_behavior_when_worker_terminate($terminate_msg, $msg_level){
         $this->libs['mc_log_mgr']->write_log($terminate_msg, $msg_level);
+        $this->report_worker_result_to_db("T", $terminate_msg);
     }
 
     public function daemon_behavior_when_daemon_terminate(){
@@ -296,24 +302,23 @@ abstract class mc_daemon extends daemon {
      *
      *  Return: array
      */
-    public function authenticate_job($job){
-        $user = $job['payload']['user'];
-        $passwd = $job['payload']['passwd'];
-        $run_user = $job['payload']['run_user'];
-        $cmd = $job['payload']['cmd'];
-        $dir = $job['payload']['dir'];
+    public function authenticate_job(){
+        $user = $this->job['payload']['user'];
+        $passwd = $this->job['payload']['passwd'];
+        $run_user = $this->job['payload']['run_user'];
+        $cmd = $this->job['payload']['cmd'];
+        $dir = $this->job['payload']['dir'];
 
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
         exec($this->proj_dir."/lib/module/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
         if($pass_auth == 0){
-            $job['msg'] = 'Pass account authentication.';
-            $job['msg_level'] = 'INFO';
+            $this->job['msg'] = 'Pass account authentication.';
+            $this->job['msg_level'] = 'INFO';
         }else{
-            $job['status'] = false;
-            $job['msg'] = "Can't pass account authentication. Please make sure your username and password is correct.";
-            $job['msg_level'] = "WARNING";
+            $this->job['status'] = false;
+            $this->job['msg'] = "Can't pass account authentication. Please make sure your username and password is correct.";
+            $this->job['msg_level'] = "WARNING";
         }
-        return $job;
     }
 
     public function clear_timeout_worker(){
@@ -433,16 +438,63 @@ abstract class mc_daemon extends daemon {
         }
     }
 
-    /*
-     *
-     */
-    public function register_worker(){
+    public function gen_proc_hash(){
+        return md5($this->config['basic']['host'].$this->stime.$this->pid);
     }
 
-    /*
-     *
-     */
-    public function report_worker_result(){
+    public function register_worker_to_db(){
+        $info = array();
+        
+        $info['hash'] = $this->hash;
+        $info['stime'] = date("Y-m-d H:i:s", $this->stime);
+        $info['host'] = $this->config['basic']['host'];
+        $info['pid'] = $this->pid;
+        
+        foreach($this->job['payload'] as $arg_name => $arg_val){
+            if($arg_name == "timeout"){
+                $arg_val = $arg_val ? $arg_val : $this->config['basic']['default_timeout'];
+            }
+            if($arg_name != "passwd" and $arg_name != "host"){
+                $info["$arg_name"] = $arg_val;
+            }
+        }
+
+        $info['status'] = "R";
+        $info['msg'] = NULL;
+
+        try{
+            $this->libs['mc_db_mgr']->write_worker_info_at_start($info);
+        }catch(PDOException $e){
+            $this->libs['mc_log_mgr']->write_log("oops");
+            $this->libs['mc_log_mgr']->write_log("Write DB error with message: ".$e->getMessage(), "WARN");
+        }
+    }
+
+    public function report_worker_result_to_db($status, $msg){
+        $info = array();
+        
+        $info['hash'] = $this->hash;
+        $info['stime'] = date("Y-m-d H:i:s", $this->stime);
+        $info['host'] = $this->config['basic']['host'];
+        $info['pid'] = $this->pid;
+        
+        foreach($this->job['payload'] as $arg_name => $arg_val){
+            if($arg_name == "timeout"){
+                $arg_val = $arg_val ? $arg_val : $this->config['basic']['default_timeout'];
+            }
+            if($arg_name != "passwd" and $arg_name != "host"){
+                $info["$arg_name"] = $arg_val;
+            }
+        }
+
+        $info['status'] = $status;
+        $info['msg'] = $msg;
+
+        try{
+            $this->libs['mc_db_mgr']->write_worker_info_at_finish($info);
+        }catch(PDOException $e){
+            $this->libs['mc_log_mgr']->write_log("Write DB error with message: ".$e->getMessage(), "WARN");
+        }
     }
 
 }

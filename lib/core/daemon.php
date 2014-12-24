@@ -5,9 +5,9 @@ abstract class daemon {
      * Define data members *
      ***********************/
 
-    public $classname;
-    public $proj_dir;
-    public $pid;
+    public $classname = null;
+    public $proj_dir = null;
+    public $pid = null;
 
 
 
@@ -45,6 +45,8 @@ abstract class daemon {
     public function set_daemon_env(){
         // Change directory to daemon location.
         chdir($this->proj_dir);        
+
+        $this->pid = getmypid();
 
         $this->disable_std_output();
 
@@ -139,10 +141,7 @@ abstract class daemon {
             }else{
 
                 // Grand child process part, also the Daemon part.
-                // We set pid attribute in mastercheif object in grand child process to the correct value.
-                $this->pid = getmypid();
-
-                // Disable output and set signal handler
+                
                 $this->set_daemon_env();
 
                 // Run daemon loop
