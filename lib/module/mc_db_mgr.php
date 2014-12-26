@@ -123,4 +123,42 @@ class mc_db_mgr extends mc_basic_tool{
         }
     }
 
+    public function get_fail_jobs(){
+
+        if($this->db_config_is_all_set and $this->activate){
+
+            /*
+
+            $retry_jobs = array();
+
+            $this->set_dsn();
+
+            $this->connect_db();
+
+            $sql = "SELECT hash, user, run_user, dir, cmd, timeout, retry FROM worker_result WHERE status LIKE ? OR status LIKE ?";
+
+            $stmt = $this->pdo->prepare($sql);
+
+            $stmt->bindValue(1, "RF", PDO::PARAM_STR);
+            $stmt->bindValue(2, "QF", PDO::PARAM_STR);
+
+            $stmt->execute();
+
+            $fail_jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach($fail_jobs as $fail_job){
+                $sql = "SELECT * FROM retry_result WHERE hash LIKE ?";
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->bindValue(1, $fail_job['hash'], PDO::PARM_STR);
+                if($stmt->rowCount() > $fail_job['retry']){
+                    
+                }
+            }
+
+            $this->close_db();
+
+             */
+
+        }
+    }
 }
