@@ -63,21 +63,14 @@ class mc_socket_mgr extends mc_basic_tool{
         array_push($this->client_sockets, $client_socket);
     }
 
-    /*
-    public function del_client_socket($socket_key){
-        socket_shutdown($this->client_sockets[$socket_key]);
-        socket_close($this->client_sockets[$socket_key]);
-        unset($this->client_sockets[$socket_key]);
-    }
-     */
-
     public function reply_client($client_socket, $msg){
         socket_write($client_socket, $msg, strlen($msg));
     }
 
     public function reload_config($config){
         parent::reload_config($config);
-        $this->bulid_service_socket();
+        $this->close_service_socket();
+        $this->build_service_socket();
     }
 
 }

@@ -175,7 +175,7 @@ then
             fi
             ;;
         reload)
-            reloda_daemon
+            reload_daemon
             ;;
         test)
             check_if_daemon_running_by_name $daemon_name
