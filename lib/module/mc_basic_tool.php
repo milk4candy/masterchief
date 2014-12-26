@@ -26,4 +26,8 @@ abstract class mc_basic_tool {
         }
     }
 
+    public function reload_config($config){
+        $this->__construct($config);
+    }
+
 }

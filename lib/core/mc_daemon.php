@@ -121,6 +121,7 @@ abstract class mc_daemon extends daemon {
     
         switch($signo){
             case SIGUSR1:
+                $this->reload_config();
                 break;
             case SIGCHLD:
                 /*
@@ -207,6 +208,18 @@ abstract class mc_daemon extends daemon {
                 }
         }
     }
+
+    public function reload_config(){
+        $this->libs['mc_log_mgr']->write_log("Configuration reloading...");
+        $this->config = $this->prepare_config();
+        foreach($this->libs as $lib_name => $lib){
+            if(preg_match('/^mc_/', $lib_name)){
+                $this->libs[$lib_name]->reload_config($this->config);
+            }
+        }
+        $this->libs['mc_log_mgr']->write_log("Configuration reload complete.");
+    }
+
 
     /*
      *  This method is used to reap any exist zombie child process.

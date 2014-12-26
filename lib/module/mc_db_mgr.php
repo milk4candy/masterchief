@@ -19,6 +19,10 @@ class mc_db_mgr extends mc_basic_tool{
         $this->prepare_db_setting();
     }
 
+    public function __destruct(){
+        $this->close_db();        
+    }
+
     private function prepare_db_setting(){
         $this->activate = $this->config['basic']['db'];
         
@@ -41,7 +45,7 @@ class mc_db_mgr extends mc_basic_tool{
         }
     }
 
-    public function set_dsn(){
+    private function set_dsn(){
         if(!$this->port){
             $this->dsn = $this->driver.":host=".$this->host.";dbname=".$this->dbname.";charset=".$this->charset;
         }else{
@@ -111,18 +115,7 @@ class mc_db_mgr extends mc_basic_tool{
 
             }else{
 
-                $stmt = $this->pdo->prepare($sql);
-
-                $sql = "INSERT INTO worker_result (hash, stime, host, pid, user, run_user, dir, cmd, sync, timeout, retry, category, sequence, status, msg) ".
-                       "VALUES (:hash, :stime, :host, :pid, :user, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq, :status, :msg)";
-
-                $stmt = $this->pdo->prepare($sql);
-
-                foreach($info as $field_name => $field_val){
-                    $stmt->bindValue(":$field_name", $field_val);
-                }
-
-                $stmt->execute();
+                $this->write_worker_info_at_start($info);
 
             }
 

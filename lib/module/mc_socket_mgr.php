@@ -75,5 +75,9 @@ class mc_socket_mgr extends mc_basic_tool{
         socket_write($client_socket, $msg, strlen($msg));
     }
 
+    public function reload_config($config){
+        parent::reload_config($config);
+        $this->bulid_service_socket();
+    }
 
 }
