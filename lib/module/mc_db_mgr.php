@@ -69,8 +69,8 @@ class mc_db_mgr extends mc_basic_tool{
 
             $this->connect_db();
 
-            $sql = "INSERT INTO worker_result (hash, stime, host, pid, user, run_user, dir, cmd, sync, timeout, retry, category, sequence, status, msg) ".
-                   "VALUES (:hash, :stime, :host, :pid, :user, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq, :status, :msg)";
+            $sql = "INSERT INTO worker_result (hash, stime, etime, host, pid, user, run_user, dir, cmd, sync, timeout, retry, category, sequence, status, msg) ".
+                   "VALUES (:hash, :stime, :etime, :host, :pid, :user, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq, :status, :msg)";
 
             $stmt = $this->pdo->prepare($sql);
 
@@ -103,10 +103,11 @@ class mc_db_mgr extends mc_basic_tool{
 
             if(count($rows) > 0){
 
-                $sql = "UPDATE worker_result SET status=:status, msg=:msg WHERE hash=:hash";
+                $sql = "UPDATE worker_result SET etime=:etime, status=:status, msg=:msg WHERE hash=:hash";
 
                 $stmt = $this->pdo->prepare($sql);
 
+                $stmt->bindValue(":etime", $info["etime"]);
                 $stmt->bindValue(":status", $info["status"]);
                 $stmt->bindValue(":msg", $info["msg"]);
                 $stmt->bindValue(":hash", $info["hash"]);
@@ -123,42 +124,48 @@ class mc_db_mgr extends mc_basic_tool{
         }
     }
 
-    public function get_fail_jobs(){
+    public function get_retry_jobs(){
 
         if($this->db_config_is_all_set and $this->activate){
-
-            /*
-
-            $retry_jobs = array();
 
             $this->set_dsn();
 
             $this->connect_db();
 
-            $sql = "SELECT hash, user, run_user, dir, cmd, timeout, retry FROM worker_result WHERE status LIKE ? OR status LIKE ?";
+            // Get all retry jobs 
+            $sql = "SELECT hash, user, run_user, dir, cmd, timeout FROM worker_result WHERE (status LIKE '%F' OR status LIKE 'T') ".
+                   "AND retry_times < retry_limit";
 
-            $stmt = $this->pdo->prepare($sql);
+            $stmt = $this->pdo->query($sql);
 
-            $stmt->bindValue(1, "RF", PDO::PARAM_STR);
-            $stmt->bindValue(2, "QF", PDO::PARAM_STR);
-
-            $stmt->execute();
-
-            $fail_jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            foreach($fail_jobs as $fail_job){
-                $sql = "SELECT * FROM retry_result WHERE hash LIKE ?";
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->bindValue(1, $fail_job['hash'], PDO::PARM_STR);
-                if($stmt->rowCount() > $fail_job['retry']){
-                    
-                }
-            }
+            $retry_jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $this->close_db();
 
-             */
+            return $retry_jobs;
 
+        }
+    }
+
+    public function write_retry_info_at_start($info){
+        if($this->db_config_is_all_set and $this->activate){
+
+            $this->set_dsn();
+
+            $this->connect_db();
+
+            $sql = "INSERT INTO retry_result (hash, stime, host, pid, user, run_user, dir, cmd, sync, timeout, retry, category, sequence, status, msg) ".
+                   "VALUES (:hash, :stime, :host, :pid, :user, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq, :status, :msg)";
+
+            $stmt = $this->pdo->prepare($sql);
+
+            foreach($info as $field_name => $field_val){
+                $stmt->bindValue(":$field_name", $field_val);
+            }
+
+            $stmt->execute();
+
+            $this->close_db();
         }
     }
 }

@@ -274,6 +274,15 @@ abstract class mc_daemon extends daemon {
         $this->hash = $this->gen_proc_hash(); 
     }
 
+    public function create_daemon_pid_dir(){
+        try{
+            $this->libs['mc_log_mgr']->create_dir($this->daemon_pid_dir, 0777);
+        }catch(Exception $e){
+            echo $e->getMessage();
+            exit(1);
+        }
+    }
+
     public function create_daemon_pid_file(){
         if(file_put_contents("$this->daemon_pid_dir/$this->classname.pid", $this->pid, LOCK_EX)){
             $this->libs['mc_log_mgr']->write_log("PID file is created.");
@@ -433,15 +442,6 @@ abstract class mc_daemon extends daemon {
         return array();
     }
 
-    public function create_daemon_pid_dir(){
-        try{
-            $this->libs['mc_log_mgr']->create_dir($this->daemon_pid_dir, 0777);
-        }catch(Exception $e){
-            echo $e->getMessage();
-            exit(1);
-        }
-    }
-
     public function create_worker_pid_dir(){
         try{
             $this->libs['mc_log_mgr']->create_dir($this->worker_pid_dir, 0777);
@@ -460,6 +460,7 @@ abstract class mc_daemon extends daemon {
         
         $info['hash'] = $this->hash;
         $info['stime'] = date("Y-m-d H:i:s", $this->stime);
+        $info['etime'] = null;
         $info['host'] = $this->config['basic']['host'];
         $info['pid'] = $this->pid;
         
@@ -488,6 +489,7 @@ abstract class mc_daemon extends daemon {
         
         $info['hash'] = $this->hash;
         $info['stime'] = date("Y-m-d H:i:s", $this->stime);
+        $info['etime'] = date("Y-m-d H:i:s");
         $info['host'] = $this->config['basic']['host'];
         $info['pid'] = $this->pid;
         
