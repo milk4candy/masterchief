@@ -334,6 +334,7 @@ abstract class mc_daemon extends daemon {
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
         exec($this->proj_dir."/lib/module/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
         if($pass_auth == 0){
+            $this->job['status'] = true;
             $this->job['msg'] = 'Pass account authentication.';
             $this->job['msg_level'] = 'INFO';
         }else{
@@ -456,54 +457,59 @@ abstract class mc_daemon extends daemon {
     }
 
     public function register_worker_to_db(){
-        $info = array();
+        $info = array('job' => array(), 'exec' => array());
         
-        $info['hash'] = $this->hash;
-        $info['stime'] = date("Y-m-d H:i:s", $this->stime);
-        $info['etime'] = null;
-        $info['host'] = $this->config['basic']['host'];
-        $info['pid'] = $this->pid;
+        $info['job']['hash'] = $this->hash;
+        $info['exec']['hash'] = $this->hash;
+        $info['exec']['stime'] = date("Y-m-d H:i:s", $this->stime);
+        $info['exec']['etime'] = null;
+        $info['exec']['host'] = $this->config['basic']['host'];
+        $info['exec']['pid'] = $this->pid;
         
         foreach($this->job['payload'] as $arg_name => $arg_val){
             if($arg_name == "timeout"){
-                $arg_val = $arg_val ? $arg_val : $this->config['basic']['default_timeout'];
+                $info['job']["$arg_name"] = $arg_val ? $arg_val : $this->config['basic']['default_timeout'];
+            }elseif($arg_name == "passwd"){
+                $info['job']["$arg_name"] = base64_encode($arg_val);
+            }else{
             }
-            if($arg_name != "passwd" and $arg_name != "host"){
-                $info["$arg_name"] = $arg_val;
+                $info['job']["$arg_name"] = $arg_val;
             }
         }
 
-        $info['status'] = "R";
-        $info['msg'] = NULL;
+        $info['exec']['status'] = "R";
+        $info['exec']['msg'] = NULL;
 
         try{
             $this->libs['mc_db_mgr']->write_worker_info_at_start($info);
         }catch(PDOException $e){
-            $this->libs['mc_log_mgr']->write_log("oops");
             $this->libs['mc_log_mgr']->write_log("Write DB error with message: ".$e->getMessage(), "WARN");
         }
     }
 
     public function report_worker_result_to_db($status, $msg){
-        $info = array();
+        $info = array('job' => array(), 'exec' => array());
         
-        $info['hash'] = $this->hash;
-        $info['stime'] = date("Y-m-d H:i:s", $this->stime);
-        $info['etime'] = date("Y-m-d H:i:s");
-        $info['host'] = $this->config['basic']['host'];
-        $info['pid'] = $this->pid;
+        $info['job']['hash'] = $this->hash;
+        $info['exec']['hash'] = $this->hash;
+        $info['exec']['stime'] = date("Y-m-d H:i:s", $this->stime);
+        $info['exec']['etime'] = date("Y-m-d H:i:s");
+        $info['exec']['host'] = $this->config['basic']['host'];
+        $info['exec']['pid'] = $this->pid;
         
         foreach($this->job['payload'] as $arg_name => $arg_val){
             if($arg_name == "timeout"){
-                $arg_val = $arg_val ? $arg_val : $this->config['basic']['default_timeout'];
+                $info['job']["$arg_name"] = $arg_val ? $arg_val : $this->config['basic']['default_timeout'];
+            }elseif($arg_name == "passwd"){
+                $info['job']["$arg_name"] = base64_encode($arg_val);
+            }else{
             }
-            if($arg_name != "passwd" and $arg_name != "host"){
-                $info["$arg_name"] = $arg_val;
+                $info['job']["$arg_name"] = $arg_val;
             }
         }
 
-        $info['status'] = $status;
-        $info['msg'] = $msg;
+        $info['exec']['status'] = $status;
+        $info['exec']['msg'] = $msg;
 
         try{
             $this->libs['mc_db_mgr']->write_worker_info_at_finish($info);

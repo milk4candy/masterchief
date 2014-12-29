@@ -69,12 +69,23 @@ class mc_db_mgr extends mc_basic_tool{
 
             $this->connect_db();
 
-            $sql = "INSERT INTO worker_result (hash, stime, etime, host, pid, user, run_user, dir, cmd, sync, timeout, retry, category, sequence, status, msg) ".
-                   "VALUES (:hash, :stime, :etime, :host, :pid, :user, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq, :status, :msg)";
+            $sql = "INSERT INTO job_info (hash, host, user, passwd, run_user, dir, cmd, sync, timeout, retry, category, sequence) ".
+                   "VALUES (:hash, :host, :user, :passwd, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq)";
 
             $stmt = $this->pdo->prepare($sql);
 
-            foreach($info as $field_name => $field_val){
+            foreach($info['job'] as $field_name => $field_val){
+                $stmt->bindValue(":$field_name", $field_val);
+            }
+
+            $stmt->execute();
+
+            $sql = "INSERT INTO exec_info (hash, stime, etime, host, pid, status, msg) ".
+                   "VALUES (:hash, :stime, :etime, :host, :pid, :status, :msg)";
+
+            $stmt = $this->pdo->prepare($sql);
+
+            foreach($info['exec'] as $field_name => $field_val){
                 $stmt->bindValue(":$field_name", $field_val);
             }
 
@@ -90,35 +101,19 @@ class mc_db_mgr extends mc_basic_tool{
             $this->set_dsn();
 
             $this->connect_db();
+            
 
-            $sql = "SELECT id from worker_result WHERE hash=:hash";
+            $sql = "UPDATE exec_info SET etime=:etime, status=:status, msg=:msg WHERE hash=:hash";
 
             $stmt = $this->pdo->prepare($sql);
 
-            $stmt->bindValue(":hash", $info["hash"]);
+            $stmt->bindValue(":etime", $info["exec"]["etime"]);
+            $stmt->bindValue(":status", $info["exec"]["status"]);
+            $stmt->bindValue(":msg", $info["exec"]["msg"]);
+            $stmt->bindValue(":hash", $info["exec"]["hash"]);
             
             $stmt->execute();
 
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if(count($rows) > 0){
-
-                $sql = "UPDATE worker_result SET etime=:etime, status=:status, msg=:msg WHERE hash=:hash";
-
-                $stmt = $this->pdo->prepare($sql);
-
-                $stmt->bindValue(":etime", $info["etime"]);
-                $stmt->bindValue(":status", $info["status"]);
-                $stmt->bindValue(":msg", $info["msg"]);
-                $stmt->bindValue(":hash", $info["hash"]);
-                
-                $stmt->execute();
-
-            }else{
-
-                $this->write_worker_info_at_start($info);
-
-            }
 
             $this->close_db();
         }
@@ -128,17 +123,25 @@ class mc_db_mgr extends mc_basic_tool{
 
         if($this->db_config_is_all_set and $this->activate){
 
+            $retry_jobs = array();
+
             $this->set_dsn();
 
             $this->connect_db();
 
             // Get all retry jobs 
-            $sql = "SELECT hash, user, run_user, dir, cmd, timeout FROM worker_result WHERE (status LIKE '%F' OR status LIKE 'T') ".
-                   "AND retry_times < retry_limit";
+            $sql = "SELECT * FROM job_info WHERE hash IN (".
+                       "SELECT hash FROM exec_info WHERE hash NOT IN (".
+                           "SELECT hash FROM exec_info WHERE status LIKE '%S' GROUP BY hash".
+                       ") ".
+                       "GROUP BY hash ".
+                       "HAVING COUNT(hash) < 3".
+                   ")";
 
             $stmt = $this->pdo->query($sql);
 
-            $retry_jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $retry_jobs['payload'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $retry_jobs['status'] = true;
 
             $this->close_db();
 
@@ -147,25 +150,4 @@ class mc_db_mgr extends mc_basic_tool{
         }
     }
 
-    public function write_retry_info_at_start($info){
-        if($this->db_config_is_all_set and $this->activate){
-
-            $this->set_dsn();
-
-            $this->connect_db();
-
-            $sql = "INSERT INTO retry_result (hash, stime, host, pid, user, run_user, dir, cmd, sync, timeout, retry, category, sequence, status, msg) ".
-                   "VALUES (:hash, :stime, :host, :pid, :user, :run_user, :dir, :cmd, :sync, :timeout, :retry, :cat, :seq, :status, :msg)";
-
-            $stmt = $this->pdo->prepare($sql);
-
-            foreach($info as $field_name => $field_val){
-                $stmt->bindValue(":$field_name", $field_val);
-            }
-
-            $stmt->execute();
-
-            $this->close_db();
-        }
-    }
 }
