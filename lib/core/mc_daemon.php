@@ -456,7 +456,7 @@ abstract class mc_daemon extends daemon {
         return md5($this->config['basic']['host'].$this->stime.$this->pid);
     }
 
-    public function register_worker_to_db(){
+    public function register_worker_to_db($is_retry = false){
         $info = array('job' => array(), 'exec' => array());
         
         $info['job']['hash'] = $this->hash;
@@ -472,7 +472,6 @@ abstract class mc_daemon extends daemon {
             }elseif($arg_name == "passwd"){
                 $info['job']["$arg_name"] = base64_encode($arg_val);
             }else{
-            }
                 $info['job']["$arg_name"] = $arg_val;
             }
         }
@@ -481,13 +480,17 @@ abstract class mc_daemon extends daemon {
         $info['exec']['msg'] = NULL;
 
         try{
-            $this->libs['mc_db_mgr']->write_worker_info_at_start($info);
+            if($is_retry){
+                $this->libs['mc_db_mgr']->write_retry_info_at_start($info);
+            }else{
+                $this->libs['mc_db_mgr']->write_worker_info_at_start($info);
+            }
         }catch(PDOException $e){
             $this->libs['mc_log_mgr']->write_log("Write DB error with message: ".$e->getMessage(), "WARN");
         }
     }
 
-    public function report_worker_result_to_db($status, $msg){
+    public function report_worker_result_to_db($status, $msg, $is_retry = false){
         $info = array('job' => array(), 'exec' => array());
         
         $info['job']['hash'] = $this->hash;
@@ -503,7 +506,6 @@ abstract class mc_daemon extends daemon {
             }elseif($arg_name == "passwd"){
                 $info['job']["$arg_name"] = base64_encode($arg_val);
             }else{
-            }
                 $info['job']["$arg_name"] = $arg_val;
             }
         }
@@ -512,7 +514,11 @@ abstract class mc_daemon extends daemon {
         $info['exec']['msg'] = $msg;
 
         try{
-            $this->libs['mc_db_mgr']->write_worker_info_at_finish($info);
+            if($is_retry){
+                $this->libs['mc_db_mgr']->write_retry_info_at_finish($info);
+            }else{
+                $this->libs['mc_db_mgr']->write_worker_info_at_finish($info);
+            }
         }catch(PDOException $e){
             $this->libs['mc_log_mgr']->write_log("Write DB error with message: ".$e->getMessage(), "WARN");
         }

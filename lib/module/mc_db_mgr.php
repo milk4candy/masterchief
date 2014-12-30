@@ -103,7 +103,7 @@ class mc_db_mgr extends mc_basic_tool{
             $this->connect_db();
             
 
-            $sql = "UPDATE exec_info SET etime=:etime, status=:status, msg=:msg WHERE hash=:hash";
+            $sql = "UPDATE exec_info SET etime=:etime, status=:status, msg=:msg WHERE hash=:hash and pid=:pid";
 
             $stmt = $this->pdo->prepare($sql);
 
@@ -111,6 +111,7 @@ class mc_db_mgr extends mc_basic_tool{
             $stmt->bindValue(":status", $info["exec"]["status"]);
             $stmt->bindValue(":msg", $info["exec"]["msg"]);
             $stmt->bindValue(":hash", $info["exec"]["hash"]);
+            $stmt->bindValue(":pid", $info["exec"]["pid"]);
             
             $stmt->execute();
 
@@ -123,7 +124,7 @@ class mc_db_mgr extends mc_basic_tool{
 
         if($this->db_config_is_all_set and $this->activate){
 
-            $retry_jobs = array();
+            $return_jobs = array();
 
             $this->set_dsn();
 
@@ -139,15 +140,47 @@ class mc_db_mgr extends mc_basic_tool{
                    ")";
 
             $stmt = $this->pdo->query($sql);
+            
+            $retry_jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $retry_jobs['payload'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $retry_jobs['status'] = true;
+            for($i=0; $i<count($retry_jobs); $i++){
+                foreach($retry_jobs[$i] as $field_name => $field_val){
+                    $return_jobs[$i]['payload'][$field_name] = $field_val;
+                    $return_jobs[$i]['status'] = true;
+                }
+            }
 
             $this->close_db();
 
-            return $retry_jobs;
+            return $return_jobs;
 
         }
+    }
+
+    public function write_retry_info_at_start($info){
+        if($this->db_config_is_all_set and $this->activate){
+
+            $this->set_dsn();
+
+            $this->connect_db();
+
+            $sql = "INSERT INTO exec_info (hash, stime, etime, host, pid, status, msg) ".
+                   "VALUES (:hash, :stime, :etime, :host, :pid, :status, :msg)";
+
+            $stmt = $this->pdo->prepare($sql);
+
+            foreach($info['exec'] as $field_name => $field_val){
+                $stmt->bindValue(":$field_name", $field_val);
+            }
+
+            $stmt->execute();
+
+            $this->close_db();
+        }
+    }
+
+    public function write_retry_info_at_finish($info){
+        $this->write_worker_info_at_finish($info);
     }
 
 }
