@@ -128,9 +128,9 @@ class masterchief extends mc_daemon{
             $payload['timeout'] = false;
         }
         if(in_array('-r', $input_array)){
-            $payload['retry'] = $input_array[array_search('-r', $input_array)+1];
+            $payload['retry'] = true;
         }else{
-            $payload['retry'] = 0;
+            $payload['retry'] = false;
         }
         if(in_array('--cat', $input_array)){
             $payload['cat'] = $input_array[array_search('--cat', $input_array)+1];
