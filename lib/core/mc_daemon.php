@@ -524,5 +524,14 @@ abstract class mc_daemon extends daemon {
         }
     }
 
+    public function nap($last_time){
+        declare(ticks=1){
+            $now = time();
+            while(time() - $now <= $last_time){
+                $do_nothing = null;
+            }
+        }
+    }
+
 }
 

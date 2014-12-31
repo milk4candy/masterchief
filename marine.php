@@ -49,7 +49,9 @@ class marine extends mc_daemon{
                 if(count($this->workers) < $this->config['basic']['maxworker']){
                     try{
                         $this->jobs = $this->libs['mc_db_mgr']->get_retry_jobs();
-                        //$this->libs['mc_log_mgr']->write_log(count($this->jobs)." retry job(s) found.");
+                        if(count($this->jobs) > 0){
+                            $this->libs['mc_log_mgr']->write_log(count($this->jobs)." retry job(s) found.");
+                        }
                     }catch(PDOException $e){
                         $this->libs['mc_log_mgr']->write_log("Something wrong when get retry job from DB.", "ERRO");
                         $this->jobs = array();
@@ -163,9 +165,10 @@ class marine extends mc_daemon{
                             $this->workers[$worker_pid] = array('start_time' => time(), 'timeout' => $timeout, 'terminate_times' => 0);
                             $job_cmd = explode(' ', $this->job['payload']['cmd']);
                             $this->libs['mc_log_mgr']->write_log("Create a worker(PID=$worker_pid) for ".basename($job_cmd[0]));
-                        }
-                    }
+                        } /* End of fork */
+                    } /* End of foreach loop*/
                 } /* End of max worker check */
+            $this->nap($this->config['basic']['interval']);
             } /* End of declare */
 
             $this->clear_timeout_worker();
@@ -174,7 +177,8 @@ class marine extends mc_daemon{
 
             $this->libs['mc_log_mgr']->logrotate();
 
-            sleep($this->config['basic']['interval']);
+
+
 
         } /* End of while loop */
 
