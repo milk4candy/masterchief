@@ -168,7 +168,6 @@ class marine extends mc_daemon{
                         } /* End of fork */
                     } /* End of foreach loop*/
                 } /* End of max worker check */
-            $this->nap($this->config['basic']['interval']);
             } /* End of declare */
 
             $this->clear_timeout_worker();
@@ -176,6 +175,8 @@ class marine extends mc_daemon{
             $this->clear_uncaptured_zombies();
 
             $this->libs['mc_log_mgr']->logrotate();
+
+            $this->nap($this->config['basic']['interval']);
 
 
 
