@@ -131,9 +131,9 @@ class mc_db_mgr extends mc_basic_tool{
             $this->connect_db();
 
             // Get all retry jobs 
-            $sql = "SELECT * FROM job_info WHERE hash IN (".
+            $sql = "SELECT * FROM job_info WHERE retry > 0 AND hash IN (".
                        "SELECT hash FROM exec_info WHERE hash NOT IN (".
-                           "SELECT hash FROM exec_info WHERE status LIKE '%S' GROUP BY hash".
+                           "SELECT hash FROM exec_info WHERE status LIKE '%S' OR status LIKE 'R' GROUP BY hash".
                        ") ".
                        "GROUP BY hash ".
                        "HAVING COUNT(hash) < 3".
