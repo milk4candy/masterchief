@@ -2,7 +2,8 @@
 
 <?php
 
-require(__DIR__.'/lib/core/mc_daemon.php');
+//require(__DIR__.'/lib/core/mc_daemon.php');
+require(dirname(__FILE__).'/lib/core/mc_daemon.php');
 
 class masterchief extends mc_daemon{
 

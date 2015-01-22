@@ -27,7 +27,8 @@ abstract class daemon {
         date_default_timezone_set("Asia/Taipei");
         
         $this->classname = get_class($this);
-        $this->proj_dir = dirname(dirname(__DIR__));
+        #$this->proj_dir = dirname(dirname(__DIR__));
+        $this->proj_dir = dirname(dirname(dirname(__FILE__)));
         $this->pid = getmypid();
     } 
 

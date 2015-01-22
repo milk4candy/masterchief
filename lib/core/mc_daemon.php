@@ -1,6 +1,7 @@
 <?php
 
-require(__DIR__.'/daemon.php');
+//require(__DIR__.'/daemon.php');
+require(dirname(__FILE__).'/daemon.php');
 
 abstract class mc_daemon extends daemon {
 
