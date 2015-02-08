@@ -6,6 +6,7 @@ abstract class mc_basic_tool {
      ** Define data members **
      *************************/
     
+    public $ds = DIRECTORY_SEPARATOR;
     public $config;
 
 

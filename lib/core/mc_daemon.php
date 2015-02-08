@@ -1,6 +1,8 @@
 <?php
 
-require(__DIR__.'/daemon.php');
+$ds = DIRECTORY_SEPARATOR;
+
+require(__DIR__.$ds."daemon.php");
 
 abstract class mc_daemon extends daemon {
 
@@ -30,11 +32,11 @@ abstract class mc_daemon extends daemon {
     public function __construct($cmd_args){
         parent::__construct();
         umask(0);
-        $this->daemon_pid_dir = $this->proj_dir."/pid/".$this->classname;
-        $this->worker_pid_dir = $this->proj_dir."/pid/".$this->classname."/worker";
+        $this->daemon_pid_dir = $this->proj_dir.$this->ds."pid".$this->ds.$this->classname;
+        $this->worker_pid_dir = $this->proj_dir.$this->ds."pid".$this->ds.$this->classname.$this->ds."worker";
         $this->args = $this->prepare_args($cmd_args);
         $this->config = $this->prepare_config();
-        $this->init_libs($this->proj_dir.'/lib/module');
+        $this->init_libs($this->proj_dir.$this->ds.'lib'.$this->ds.'module');
         $this->create_daemon_pid_dir();
         $this->create_worker_pid_dir();
     } 
@@ -54,7 +56,7 @@ abstract class mc_daemon extends daemon {
         $args = array();
 
         if(!in_array('-c', $cmd_args)){
-            $args['config'] = $this->proj_dir.'/config/'.$this->classname.'.ini';
+            $args['config'] = $this->proj_dir.$this->ds.'config'.$this->ds.$this->classname.'.ini';
         }else{
             $arg_key = array_search('-c', $cmd_args);
             $config_file = $cmd_args[$arg_key + 1];
@@ -81,13 +83,13 @@ abstract class mc_daemon extends daemon {
      * This method will load all needed php files and generate all needed objects then put them in a data member called libs.
      * Return: void
      */
-    public function init_libs($lib_dir = './lib/module'){
+    public function init_libs($lib_dir = '.'.DIRECTORY_SEPARATOR.'lib'.DIRECTORY_SEPARATOR.'module'){
         // Initial a empty array as a container for library objects
         $this->libs = array();
 
         // Read all requeired libraries defined in config file
         foreach($this->config['basic']['libraries'] as $lib_name){
-            require("$lib_dir/$lib_name.php");
+            require("$lib_dir".$this->ds."$lib_name.php");
             $class = new ReflectionClass($lib_name);
             if(!$class->isAbstract()){
                 if(preg_match('/^mc_/', $lib_name)){
@@ -284,7 +286,7 @@ abstract class mc_daemon extends daemon {
     }
 
     public function create_daemon_pid_file(){
-        if(file_put_contents("$this->daemon_pid_dir/$this->classname.pid", $this->pid, LOCK_EX)){
+        if(file_put_contents("$this->daemon_pid_dir".$this->ds."$this->classname.pid", $this->pid, LOCK_EX)){
             $this->libs['mc_log_mgr']->write_log("PID file is created.");
         }else{
             $this->libs['mc_log_mgr']->write_log("Can't create PID file, daemon stop!");
@@ -299,8 +301,8 @@ abstract class mc_daemon extends daemon {
         }
 
         // Remove pid file of finished worker.
-        if(file_exists($this->worker_pid_dir."/".$exit_worker_pid)){
-            unlink($this->worker_pid_dir."/".$exit_worker_pid);
+        if(file_exists($this->worker_pid_dir.$this->ds.$exit_worker_pid)){
+            unlink($this->worker_pid_dir.$this->ds.$exit_worker_pid);
         }
     }
 
@@ -314,7 +316,7 @@ abstract class mc_daemon extends daemon {
     }
 
     public function daemon_behavior_when_daemon_terminate(){
-        unlink("$this->daemon_pid_dir/$this->classname.pid");
+        unlink("$this->daemon_pid_dir".$this->ds."$this->classname.pid");
         $this->libs['mc_log_mgr']->write_log($this->proc_type." ".$this->classname."(PID=".$this->pid.") stop!");
     }
 
@@ -332,7 +334,7 @@ abstract class mc_daemon extends daemon {
         $dir = $this->job['payload']['dir'];
 
         // Authenticate username and password -- make sure this pair username and password can login on local machine.(including LDAP user)
-        exec($this->proj_dir."/lib/module/auth.py $user $passwd >/dev/null 2>&1", $output, $pass_auth);
+        exec($this->proj_dir.$this->ds."lib".$this->ds."module".$this->ds."auth.py $user $passwd >".$this->ds."dev".$this->ds."null 2>&1", $output, $pass_auth);
         if($pass_auth == 0){
             $this->job['status'] = true;
             $this->job['msg'] = 'Pass account authentication.';
@@ -378,7 +380,7 @@ abstract class mc_daemon extends daemon {
 
 
         // Find PPID of job which is executing by worker.
-        $pid_file = $this->worker_pid_dir."/".$worker_pid;
+        $pid_file = $this->worker_pid_dir.$this->ds.$worker_pid;
         if(file_exists($pid_file)){
             exec("cat $pid_file", $job_ppid_output, $job_ppid_get_exec_code);
         }

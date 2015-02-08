@@ -4,7 +4,7 @@ abstract class daemon {
     /***********************
      * Define data members *
      ***********************/
-
+    public $ds = DIRECTORY_SEPARATOR;
     public $classname = null;
     public $proj_dir = null;
     public $pid = null;

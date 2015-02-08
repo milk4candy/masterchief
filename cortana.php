@@ -2,7 +2,9 @@
 
 <?php
 
-require(__DIR__.'/lib/core/mc_daemon.php');
+$ds = DIRECTORY_SEPARATOR;
+
+require(__DIR__.$ds.'lib'.$ds.'core'.$ds.'mc_daemon.php');
 
 class cortana extends mc_daemon{
 
@@ -102,20 +104,20 @@ class cortana extends mc_daemon{
                                 if($run_user == $user){
                                     if($run_user == 'root'){
                                         //exec("cd $dir && $cmd 2>&1", $output, $exec_code);
-                                        exec("echo $$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd 2>&1", $output, $exec_code);
+                                        exec("echo $$ > ".$this->worker_pid_dir.$this->ds.$this->pid." && cd $dir && $cmd 2>&1", $output, $exec_code);
                                     }else{
                                         //exec("su -l $user -c 'cd $dir && $cmd' 2>&1", $output, $exec_code);
-                                        exec("su -l $user -c 'echo $$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd' 2>&1", $output, $exec_code);
+                                        exec("su -l $user -c 'echo $$ > ".$this->worker_pid_dir.$this->ds.$this->pid." && cd $dir && $cmd' 2>&1", $output, $exec_code);
                                     }
                                 }else{
                                     $cmd = str_replace('"', '\"', $cmd);
                                     $cmd = str_replace("'", "\'", $cmd);
                                     if($run_user == 'root'){
                                         //exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S $cmd' 2>&1", $output, $exec_code);
-                                        exec("su -l $user -c 'echo $passwd|sudo -S bash -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
+                                        exec("su -l $user -c 'echo $passwd|sudo -S bash -c \"echo \\$\\$ > ".$this->worker_pid_dir.$this->ds.$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
                                     }else{
                                         //exec("su -l $user -c 'cd $dir && echo $passwd|sudo -S -u $run_user $cmd' 2>&1", $output, $exec_code);
-                                        exec("su -l $user -c 'echo $passwd|sudo -S -u $run_user bash -c \"echo \\$\\$ > ".$this->worker_pid_dir."/".$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
+                                        exec("su -l $user -c 'echo $passwd|sudo -S -u $run_user bash -c \"echo \\$\\$ > ".$this->worker_pid_dir.$this->ds.$this->pid." && cd $dir && $cmd\"' 2>&1", $output, $exec_code);
                                     }
                                 }
                                 if($exec_code == 0){

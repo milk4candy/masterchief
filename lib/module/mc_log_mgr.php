@@ -15,8 +15,8 @@ class mc_log_mgr extends mc_basic_tool{
         $log_dir = $this->config['log']['dir'];
         $log_name = $this->config['log']['log_name'];
         $errlog_name = $this->config['log']['errlog_name'];
-        $this->log = rtrim($log_dir, '/').'/'.$log_name.'.log';
-        $this->errlog = rtrim($log_dir, '/').'/'.$errlog_name.'.log';
+        $this->log = rtrim($log_dir, $this->ds).$this->ds.$log_name.'.log';
+        $this->errlog = rtrim($log_dir, $this->ds).$this->ds.$errlog_name.'.log';
     }
 
     public function write_log($msg, $level='INFO'){
