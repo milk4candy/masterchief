@@ -2,7 +2,8 @@
 
 $ds = DIRECTORY_SEPARATOR;
 
-require(__DIR__.$ds."daemon.php");
+//require(__DIR__.$ds."daemon.php");
+require(dirname(__FILE__).$ds."daemon.php");
 
 abstract class mc_daemon extends daemon {
 

@@ -4,7 +4,8 @@
 
 $ds = DIRECTORY_SEPARATOR;
 
-require(__DIR__.$ds."lib".$ds."core".$ds."mc_daemon.php");
+//require(__DIR__.$ds."lib".$ds."core".$ds."mc_daemon.php");
+require(dirname(__FILE__).$ds."lib".$ds."core".$ds."mc_daemon.php");
 
 class masterchief extends mc_daemon{
 
