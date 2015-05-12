@@ -84,7 +84,12 @@ abstract class mc_daemon extends daemon {
      * This method will load all needed php files and generate all needed objects then put them in a data member called libs.
      * Return: void
      */
-    public function init_libs($lib_dir = '.'.DIRECTORY_SEPARATOR.'lib'.DIRECTORY_SEPARATOR.'module'){
+    public function init_libs($lib_dir = ''){
+
+        if($lib_dir == ''){
+            $lib_dir = '.'.$this->ds.'lib'.$this->ds.'module';
+        }
+
         // Initial a empty array as a container for library objects
         $this->libs = array();
 
