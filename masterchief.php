@@ -79,7 +79,7 @@ class masterchief extends mc_daemon{
         $status = true;
         $err = '';
         $payload = array();
-        $input_array = explode(',', $input);
+        $input_array = explode('%,%', $input);
         if(!in_array('-h', $input_array)){
             $status = false;
             $err .= "missing -h argument.\n";

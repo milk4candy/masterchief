@@ -51,7 +51,7 @@
                 exit(1);
             }
 
-            return implode(',', $args);
+            return implode('%,%', $args);
         }
 
         public function execute(){
