@@ -44,7 +44,7 @@
                 echo 'Please use --cmd argument to provide command to run'."\n";
                 exit(1);
             }
-            if(!in_array('--sync', $args) and !in_array('async', $args)){
+            if(!in_array('--sync', $args) and !in_array('--async', $args)){
                 array_push($args, '--async');
             }elseif(in_array('--sync', $args) and in_array('--async', $args)){
                 echo "Argument --sync and --async can't coexist. Please choose one."."\n";
